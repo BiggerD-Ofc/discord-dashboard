@@ -1,11 +1,27 @@
 import os
 import logging
 from datetime import timedelta
-from flask import Flask, render_template, redirect, url_for, session, jsonify
-from flask_discord import DiscordOAuth2Session
+from flask import Flask, render_template, redirect, url_for, session, request
+import requests
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dashboard")
+
+
+CLIENT_ID = "1256909611341189193"
+CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+REDIRECT_URI = "https://dash.quanty-bot.linkpc.net/callback"
+
+OAUTH_URL = (
+    "https://discord.com/oauth2/authorize"
+    f"?client_id={CLIENT_ID}"
+    "&response_type=code"
+    f"&redirect_uri={REDIRECT_URI}"
+    "&scope=identify%20email%20guilds"
+)
+
+TOKEN_URL = "https://discord.com/api/oauth2/token"
+USER_URL = "https://discord.com/api/users/@me"
 
 
 def create_app():
@@ -15,23 +31,7 @@ def create_app():
     # CONFIG
     # =====================
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
-
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
-
-    app.config["DISCORD_CLIENT_ID"] = os.getenv("DISCORD_CLIENT_ID")
-    app.config["DISCORD_CLIENT_SECRET"] = os.getenv("DISCORD_CLIENT_SECRET")
-    app.config["DISCORD_REDIRECT_URI"] = os.getenv("DISCORD_REDIRECT_URI")
-
-    app.config["DISCORD_SCOPE"] = ["identify", "email", "guilds"]
-
-    # Flask-Discord safety
-    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
-
-    # =====================
-    # DISCORD
-    # =====================
-    discord = DiscordOAuth2Session(app)
-    app.extensions["discord"] = discord
 
     # =====================
     # ROUTES
@@ -43,41 +43,55 @@ def create_app():
             return redirect(url_for("dashboard"))
         return render_template("login.html")
 
+    # 🔥 LOGIN (TVŮJ LINK)
     @app.route("/login")
     def login():
-        session.clear()
-        return discord.create_session(scope=app.config["DISCORD_SCOPE"])
+        return redirect(OAUTH_URL)
 
-    # =====================
-    # FIXED CALLBACK (IMPORTANT)
-    # =====================
+    # 🔥 CALLBACK (DISCORD LOGIN FINISH)
     @app.route("/callback")
     def callback():
-        try:
-            discord.callback()
+        code = request.args.get("code")
 
-            token = discord.token
-            user = discord.user
+        if not code:
+            return "Missing code", 400
 
-            if not token or not user:
-                logger.error("OAuth failed: missing token/user")
-                return redirect(url_for("home"))
+        # exchange code -> token
+        data = {
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": REDIRECT_URI,
+        }
 
-            session.clear()
-            session["discord_token"] = token
-            session["user"] = {
-                "id": str(user.id),
-                "name": user.name,
-                "avatar": getattr(user, "avatar_url", None)
-            }
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
 
-            session.permanent = True
+        token_response = requests.post(TOKEN_URL, data=data, headers=headers)
+        token_json = token_response.json()
 
-            return redirect(url_for("dashboard"))
+        access_token = token_json.get("access_token")
 
-        except Exception as e:
-            logger.error(f"OAuth callback error: {e}")
-            return redirect(url_for("home"))
+        if not access_token:
+            return f"Token error: {token_json}", 400
+
+        # get user
+        user_response = requests.get(
+            USER_URL,
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+        user = user_response.json()
+
+        session["user"] = {
+            "id": user["id"],
+            "name": user["username"],
+            "avatar": user.get("avatar"),
+        }
+
+        return redirect(url_for("dashboard"))
 
     @app.route("/logout")
     def logout():
@@ -98,7 +112,7 @@ def create_app():
 
     @app.route("/api/stats")
     def stats():
-        return jsonify({"status": "ok"})
+        return {"status": "ok"}
 
     return app
 
