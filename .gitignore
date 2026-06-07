@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+dashboard.log
+.flask_session/
+.env
