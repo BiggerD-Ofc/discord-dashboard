@@ -1,2 +1,7 @@
 fastapi
 uvicorn
+Flask
+requests
+python-dotenv
+flask-discord
+gunicorn
