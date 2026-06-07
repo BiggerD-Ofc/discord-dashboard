@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 Flask
+flask-discord
 requests
 python-dotenv
-flask-discord
 gunicorn
