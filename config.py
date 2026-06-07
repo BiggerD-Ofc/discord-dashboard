@@ -58,7 +58,7 @@ class Config:
     DISCORD_CLIENT_ID = os.getenv('DISCORD_CLIENT_ID', '1256909611341189193')
     DISCORD_CLIENT_SECRET = os.getenv('DISCORD_CLIENT_SECRET')
     DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
-    DISCORD_REDIRECT_URI = os.getenv('DISCORD_REDIRECT_URI', 'https://dash.quanty-bot.linkpc.net:5001/callback')
+    DISCORD_REDIRECT_URI = os.getenv('https://dash.quanty-bot.linkpc.net/callback')
     
     @classmethod
     def get_redirect_uri(cls, request_host):
