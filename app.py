@@ -24,6 +24,9 @@ def create_app():
 
     app.config["DISCORD_SCOPE"] = ["identify", "email", "guilds"]
 
+    # Flask-Discord safety
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+
     # =====================
     # DISCORD
     # =====================
@@ -45,18 +48,36 @@ def create_app():
         session.clear()
         return discord.create_session(scope=app.config["DISCORD_SCOPE"])
 
+    # =====================
+    # FIXED CALLBACK (IMPORTANT)
+    # =====================
     @app.route("/callback")
     def callback():
-        discord.callback()
-        user = discord.fetch_user()
+        try:
+            discord.callback()
 
-        session["user"] = {
-            "id": str(user.id),
-            "name": user.name,
-            "avatar": user.avatar_url if hasattr(user, "avatar_url") else None
-        }
+            token = discord.token
+            user = discord.user
 
-        return redirect(url_for("dashboard"))
+            if not token or not user:
+                logger.error("OAuth failed: missing token/user")
+                return redirect(url_for("home"))
+
+            session.clear()
+            session["discord_token"] = token
+            session["user"] = {
+                "id": str(user.id),
+                "name": user.name,
+                "avatar": getattr(user, "avatar_url", None)
+            }
+
+            session.permanent = True
+
+            return redirect(url_for("dashboard"))
+
+        except Exception as e:
+            logger.error(f"OAuth callback error: {e}")
+            return redirect(url_for("home"))
 
     @app.route("/logout")
     def logout():
