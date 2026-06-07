@@ -1,74 +1,38 @@
 import os
 import logging
-import requests
-import traceback
-from datetime import datetime, timedelta
-from logging.handlers import RotatingFileHandler
-from dotenv import load_dotenv
-from flask import (
-    Flask, render_template, redirect, url_for, session,
-    jsonify, request
-)
+from datetime import timedelta
+from flask import Flask, render_template, redirect, url_for, session, jsonify
 from flask_discord import DiscordOAuth2Session
 
-# =========================
-# Logging
-# =========================
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-file_handler = RotatingFileHandler(
-    'dashboard.log',
-    maxBytes=10 * 1024 * 1024,
-    backupCount=5
-)
-logger.addHandler(file_handler)
-
-# =========================
-# Load env
-# =========================
-load_dotenv()
-
-from dashboard.config import config
+logger = logging.getLogger("dashboard")
 
 
-# =========================
-# APP FACTORY
-# =========================
-def create_app(env="production"):
-    app = Flask(__name__, static_folder='static')
+def create_app():
+    app = Flask(__name__, static_folder="static")
 
-    # =========================
-    # Basic config
-    # =========================
-    app.config.from_object(config)
-    app.config['ENV'] = env
-    app.config['DEBUG'] = env == "development"
+    # =====================
+    # CONFIG
+    # =====================
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
 
-    app.config.update(
-        SECRET_KEY=os.getenv("SECRET_KEY", "change-me"),
-        SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE="Lax",
-        PERMANENT_SESSION_LIFETIME=timedelta(days=7)
-    )
+    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
-    # =========================
-    # OAuth config
-    # =========================
-    app.config['DISCORD_CLIENT_ID'] = config.DISCORD_CLIENT_ID
-    app.config['DISCORD_CLIENT_SECRET'] = config.DISCORD_CLIENT_SECRET
-    app.config['DISCORD_REDIRECT_URI'] = config.DISCORD_REDIRECT_URI
-    app.config['DISCORD_SCOPE'] = ['identify', 'email', 'guilds']
+    app.config["DISCORD_CLIENT_ID"] = os.getenv("DISCORD_CLIENT_ID")
+    app.config["DISCORD_CLIENT_SECRET"] = os.getenv("DISCORD_CLIENT_SECRET")
+    app.config["DISCORD_REDIRECT_URI"] = os.getenv("DISCORD_REDIRECT_URI")
 
-    # =========================
-    # Discord OAuth init
-    # =========================
+    app.config["DISCORD_SCOPE"] = ["identify", "email", "guilds"]
+
+    # =====================
+    # DISCORD
+    # =====================
     discord = DiscordOAuth2Session(app)
-    app.extensions['discord'] = discord
+    app.extensions["discord"] = discord
 
-    # =========================
+    # =====================
     # ROUTES
-    # =========================
+    # =====================
 
     @app.route("/")
     def home():
@@ -79,36 +43,20 @@ def create_app(env="production"):
     @app.route("/login")
     def login():
         session.clear()
-
-        discord = app.extensions["discord"]
-
-        auth_url = discord.authorization_url(
-            scope=app.config["DISCORD_SCOPE"],
-            redirect_uri=app.config["DISCORD_REDIRECT_URI"]
-        )
-
-        return redirect(auth_url)
+        return discord.create_session(scope=app.config["DISCORD_SCOPE"])
 
     @app.route("/callback")
     def callback():
-        discord = app.extensions["discord"]
+        discord.callback()
+        user = discord.fetch_user()
 
-        try:
-            token = discord.token
-            user = discord.user
+        session["user"] = {
+            "id": str(user.id),
+            "name": user.name,
+            "avatar": user.avatar_url if hasattr(user, "avatar_url") else None
+        }
 
-            session["discord_token"] = token
-            session["user"] = {
-                "id": str(user.id),
-                "name": user.name,
-                "avatar": getattr(user, "avatar_url", None)
-            }
-
-            return redirect(url_for("dashboard"))
-
-        except Exception as e:
-            logger.error(f"OAuth error: {e}")
-            return "Auth failed", 500
+        return redirect(url_for("dashboard"))
 
     @app.route("/logout")
     def logout():
@@ -119,51 +67,23 @@ def create_app(env="production"):
     def dashboard():
         if "user" not in session:
             return redirect(url_for("home"))
-
         return render_template("dashboard.html", user=session["user"])
 
     @app.route("/servers")
     def servers():
         if "user" not in session:
             return redirect(url_for("home"))
-
         return render_template("servers.html", user=session["user"])
 
-    # =========================
-    # API
-    # =========================
-
     @app.route("/api/stats")
-    def api_stats():
-        return jsonify({
-            "status": "ok"
-        })
-
-    # =========================
-    # ERROR HANDLERS
-    # =========================
-
-    @app.errorhandler(404)
-    def not_found(e):
-        return render_template("error.html", error="404 Not Found"), 404
-
-    @app.errorhandler(500)
-    def server_error(e):
-        return render_template("error.html", error="500 Server Error"), 500
+    def stats():
+        return jsonify({"status": "ok"})
 
     return app
 
 
-# =========================
-# RUN (RENDER SAFE)
-# =========================
+app = create_app()
+
 if __name__ == "__main__":
-    app = create_app("development")
-
-    port = int(os.environ.get("PORT", 10000))
-
-    app.run(
-        host="0.0.0.0",
-        port=port,
-        debug=False
-    )
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
