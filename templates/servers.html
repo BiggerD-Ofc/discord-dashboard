@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}Server Management - Mr.Afton Dashboard{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">Server Management</h1>
+    <p class="mt-1 text-sm text-gray-500">Manage your servers and bot settings.</p>
+</div>
+
+<!-- Server List -->
+<div class="bg-white shadow overflow-hidden sm:rounded-lg">
+    <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+        <h3 class="text-lg leading-6 font-medium text-gray-900">Your Servers</h3>
+        <p class="mt-1 max-w-2xl text-sm text-gray-500">Manage your Discord servers where the bot is added</p>
+    </div>
+    <div class="bg-white shadow overflow-hidden sm:rounded-md">
+        <ul class="divide-y divide-gray-200" id="server-list">
+            <!-- Server items will be loaded here via JavaScript -->
+            <div class="text-center py-4 text-gray-500">
+                <p>Loading servers...</p>
+            </div>
+        </ul>
+    </div>
+</div>
+
+<!-- Server Settings Modal -->
+<div id="server-modal" class="hidden fixed inset-0 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        <div class="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
+            <div>
+                <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100">
+                    <i class="fas fa-cog text-indigo-600 text-xl"></i>
+                </div>
+                <div class="mt-3 text-center sm:mt-5">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900" id="server-modal-title">
+                        Server Settings
+                    </h3>
+                    <div class="mt-2">
+                        <div id="server-settings-content">
+                            <!-- Server settings will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                <button type="button" id="save-settings" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:col-start-2 sm:text-sm">
+                    Save changes
+                </button>
+                <button type="button" id="close-modal" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:col-start-1 sm:text-sm">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Load user's servers
+async function loadServers() {
+    try {
+        const response = await fetch('/api/servers');
+        const servers = await response.json();
+        
+        const serverList = document.getElementById('server-list');
+        serverList.innerHTML = ''; // Clear loading message
+        
+        if (servers.length === 0) {
+            serverList.innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <i class="fas fa-server text-4xl mb-2 text-gray-300"></i>
+                    <p>No servers found where you have manage server permissions.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        servers.forEach(server => {
+            const serverItem = document.createElement('li');
+            serverItem.className = 'px-4 py-4 sm:px-6 hover:bg-gray-50';
+            serverItem.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <img class="h-10 w-10 rounded-full" 
+                             src="${server.icon ? `https://cdn.discordapp.com/icons/${server.id}/${server.icon}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png'}" 
+                             alt="">
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-900">${server.name}</div>
+                            <div class="text-sm text-gray-500">${server.id}</div>
+                        </div>
+                    </div>
+                    <div>
+                        <button onclick="openServerSettings('${server.id}')" class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs leading-4 font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            <i class="fas fa-cog mr-1"></i> Configure
+                        </button>
+                    </div>
+                </div>
+            `;
+            serverList.appendChild(serverItem);
+        });
+    } catch (error) {
+        console.error('Error loading servers:', error);
+        const serverList = document.getElementById('server-list');
+        serverList.innerHTML = `
+            <div class="text-center py-8 text-red-500">
+                <i class="fas fa-exclamation-circle text-4xl mb-2"></i>
+                <p>Failed to load servers. Please try again later.</p>
+            </div>
+        `;
+    }
+}
+
+// Open server settings modal
+async function openServerSettings(serverId) {
+    try {
+        // Show loading state
+        document.getElementById('server-settings-content').innerHTML = `
+            <div class="text-center py-4">
+                <i class="fas fa-circle-notch fa-spin text-indigo-500 text-2xl"></i>
+                <p class="mt-2 text-sm text-gray-500">Loading server settings...</p>
+            </div>
+        `;
+        
+        // Show modal
+        document.getElementById('server-modal').classList.remove('hidden');
+        
+        // In a real app, you would fetch server-specific settings here
+        // For now, we'll just show a demo form
+        setTimeout(() => {
+            document.getElementById('server-settings-content').innerHTML = `
+                <div class="space-y-4">
+                    <div>
+                        <label for="prefix" class="block text-sm font-medium text-gray-700">Command Prefix</label>
+                        <input type="text" id="prefix" name="prefix" value="!" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                    </div>
+                    <div class="relative flex items-start">
+                        <div class="flex items-center h-5">
+                            <input id="welcome-messages" name="welcome-messages" type="checkbox" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded">
+                        </div>
+                        <div class="ml-3 text-sm">
+                            <label for="welcome-messages" class="font-medium text-gray-700">Enable Welcome Messages</label>
+                            <p class="text-gray-500">Send a welcome message when new members join.</p>
+                        </div>
+                    </div>
+                    <div class="relative flex items-start">
+                        <div class="flex items-center h-5">
+                            <input id="moderation" name="moderation" type="checkbox" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded" checked>
+                        </div>
+                        <div class="ml-3 text-sm">
+                            <label for="moderation" class="font-medium text-gray-700">Enable Moderation</label>
+                            <p class="text-gray-500">Enable auto-moderation features.</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }, 1000);
+        
+        // Set up save button
+        document.getElementById('save-settings').onclick = () => {
+            // In a real app, you would save these settings to your backend
+            alert('Settings saved! (This is a demo)');
+            document.getElementById('server-modal').classList.add('hidden');
+        };
+        
+    } catch (error) {
+        console.error('Error loading server settings:', error);
+        document.getElementById('server-settings-content').innerHTML = `
+            <div class="text-center py-4 text-red-500">
+                <i class="fas fa-exclamation-circle text-4xl mb-2"></i>
+                <p>Failed to load server settings.</p>
+                <p class="text-sm text-gray-500">${error.message || 'Please try again later.'}</p>
+            </div>
+        `;
+    }
+}
+
+// Close modal when clicking the X or Cancel button
+document.getElementById('close-modal').onclick = () => {
+    document.getElementById('server-modal').classList.add('hidden');
+};
+
+// Close modal when clicking outside the modal
+window.onclick = (event) => {
+    const modal = document.getElementById('server-modal');
+    if (event.target === modal) {
+        modal.classList.add('hidden');
+    }
+};
+
+// Load servers when the page loads
+document.addEventListener('DOMContentLoaded', loadServers);
+</script>
+{% endblock %}

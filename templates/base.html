@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Mr.Afton Dashboard{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/bot-logo.png') }}">
+    <link rel="mask-icon" href="{{ url_for('static', filename='img/bot-logo.png') }}" color="#4f46e5">
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="bg-[#3600ff] text-white">
+    <!-- Navigation -->
+    <nav class="bg-indigo-600 text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 flex items-center">
+                        <img src="{{ url_for('static', filename='img/bot-logo.png') }}" alt="Bot Logo" class="h-8 w-8 mr-2 rounded-full">
+                        <span class="text-xl font-bold bg-gradient-to-r from-indigo-500 to-purple-600 bg-clip-text text-transparent">Mr.Afton</span>
+                    </div>
+                    {% if 'user' in session or user %}
+                    <div class="hidden md:ml-6 md:flex md:space-x-4">
+                        <a href="{{ url_for('dashboard') }}" class="{% if active_page == 'dashboard' %}bg-indigo-700{% else %}hover:bg-indigo-500{% endif %} px-3 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-home mr-1"></i> Dashboard
+                        </a>
+                        <a href="{{ url_for('servers') }}" class="{% if active_page == 'servers' %}bg-indigo-700{% else %}hover:bg-indigo-500{% endif %} px-3 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-server mr-1"></i> Server Management
+                        </a>
+                        <a href="https://www.mrafton.linkpc.net" target="_blank" rel="noopener noreferrer" class="hover:bg-indigo-500 px-3 py-2 rounded-md text-sm font-medium">
+                            <i class="fas fa-globe mr-1"></i> Main Website
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="flex items-center">
+                    {% if 'user' in session or user %}
+                    <div class="flex items-center">
+                        <img class="h-8 w-8 rounded-full" src="{{ user.avatar }}" alt="User avatar">
+                        <span class="ml-2 text-sm font-medium">{{ user.name }}</span>
+                        <a href="{{ url_for('logout') }}" class="ml-4 px-3 py-1 bg-red-500 text-white rounded-md text-sm hover:bg-red-600">
+                            Logout
+                        </a>
+                    </div>
+                    {% else %}
+                    <a href="{{ url_for('login') }}" class="px-4 py-2 bg-white text-indigo-600 rounded-md text-sm font-medium hover:bg-gray-100">
+                        Login with Discord
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 text-white">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="mb-4 p-4 rounded-md bg-{{ category }}-100 border-l-4 border-{{ category }}-500">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-triangle' }} text-{{ category }}-500"></i>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm text-{{ category }}-700">
+                                    {{ message }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-[#3600ff] mt-8 border-t border-opacity-20 border-white">
+        <div class="max-w-7xl mx-auto py-6 px-4 overflow-hidden sm:px-6 lg:px-8">
+            <p class="text-center text-base text-black">
+                &copy; MrAfton Support | All rights reserved
+                <span class="text-xs block mt-1 text-black">2018-2025</span>
+            </p>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8 text-center">
+        <div>
+            <i class="fas fa-robot text-6xl text-white mb-4"></i>
+            <h2 class="mt-6 text-3xl font-extrabold text-white">
+                Welcome to Your Mr.Afton Dashboard
+            </h2>
+            <p class="mt-2 text-sm text-white text-opacity-80 mb-6">
+                Sign in with Discord to access your bot's control panel
+            </p>
+            <div class="bg-white bg-opacity-10 backdrop-blur-sm p-6 rounded-lg shadow-md text-left border border-white border-opacity-10">
+                <h3 class="text-lg font-semibold mb-4 text-white">🌟 Bot Features:</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-white">
+                    <p class="flex items-center"><span class="inline-block w-6">📝</span> Prefix /</p>
+                    <p class="flex items-center"><span class="inline-block w-6">💬</span> Chatbot</p>
+                    <p class="flex items-center"><span class="inline-block w-6">🤣</span> Fun</p>
+                    <p class="flex items-center"><span class="inline-block w-6">🕵️</span> Security</p>
+                    <p class="flex items-center"><span class="inline-block w-6">🕵️</span> Moderation</p>
+                    <p class="flex items-center"><span class="inline-block w-6">📞</span> Voice Moderation system</p>
+                    <p class="flex items-center"><span class="inline-block w-6">⭐</span> AFK System</p>
+                    <p class="flex items-center"><span class="inline-block w-6">🗳️</span> Voting</p>
+                    <p class="flex items-center"><span class="inline-block w-6">🎁</span> Giveaways System</p>
+                    <p class="flex items-center"><span class="inline-block w-6">🔒</span> Reputation System</p>
+                    <p class="flex items-center"><span class="inline-block w-6">🟩</span> Bump System</p>
+                    <p class="flex items-center"><span class="inline-block w-6">🎟️</span> Ticket System</p>
+                    <p class="flex items-center"><span class="inline-block w-6">🧩</span> Server Creation (Roles, channels)</p>
+                    <p class="flex items-center"><span class="inline-block w-6">💵</span> Economy</p>
+                </div>
+            </div>
+        </div>
+        <div class="mt-8">
+            <p class="text-xs text-white text-opacity-70 mb-4 text-center">
+                By signing in, you agree to our
+                <a href="https://www.mrafton.linkpc.net/tos/terms-servise" target="_blank" rel="noopener noreferrer" class="text-indigo-300 hover:text-indigo-200">Terms of Service</a> and 
+                <a href="https://www.mrafton.linkpc.net/tos/Privacy" target="_blank" rel="noopener noreferrer" class="text-indigo-300 hover:text-indigo-200">Privacy Policy</a>
+            </p>
+            <a href="{{ url_for('login') }}" class="group relative w-full flex justify-center py-3 px-4 text-sm font-medium rounded-md text-white bg-white bg-opacity-10 hover:bg-opacity-20 backdrop-blur-sm border border-white border-opacity-20 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white focus:ring-opacity-50">
+                <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+                    <i class="fab fa-discord text-white"></i>
+                </span>
+                <span class="text-white group-hover:translate-x-1 transition-transform duration-200">
+                    Login with Discord
+                </span>
+            </a>
+        </div>
+        <div class="mt-6 grid grid-cols-3 gap-3">
+            <div class="bg-white bg-opacity-10 backdrop-blur-sm p-4 rounded-lg shadow border border-white border-opacity-10">
+                <div class="text-3xl font-bold text-white">24/7</div>
+                <div class="text-sm text-white text-opacity-80">Uptime</div>
+            </div>
+            <div class="bg-white bg-opacity-10 backdrop-blur-sm p-4 rounded-lg shadow border border-white border-opacity-10">
+                <div class="text-3xl font-bold text-white">99.9%</div>
+                <div class="text-sm text-white text-opacity-80">Reliability</div>
+            </div>
+            <div class="bg-white bg-opacity-10 backdrop-blur-sm p-4 rounded-lg shadow border border-white border-opacity-10">
+                <div class="text-3xl font-bold text-white">0</div>
+                <div class="text-sm text-white text-opacity-80">Issues</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

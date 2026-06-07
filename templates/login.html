@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Mr.Afton Dashboard{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+        <div class="text-center">
+            <img class="mx-auto h-24 w-auto" 
+                 src="{{ url_for('static', filename='img/bot-logo.png') }}" 
+                 alt="Mr.Afton Logo"
+                 style="border-radius: 50%;">
+            <h2 class="mt-6 text-3xl font-extrabold text-gray-900">
+                Welcome to Mr.Afton
+            </h2>
+            <p class="mt-2 text-sm text-gray-600">
+                Sign in to manage your bot and servers
+            </p>
+        </div>
+        
+        <div class="mt-8">
+            <div class="bg-white py-8 px-4 shadow rounded-lg sm:px-10">
+                <div class="space-y-6">
+                    <div>
+                        <a href="{{ url_for('login') }}" 
+                           class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+                                <i class="fab fa-discord"></i>
+                            </span>
+                            Sign in with Discord
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="mt-6">
+                    <div class="relative">
+                        <div class="absolute inset-0 flex items-center">
+                            <div class="w-full border-t border-gray-300"></div>
+                        </div>
+                        <div class="relative flex justify-center text-sm">
+                            <span class="px-2 bg-white text-gray-500">
+                                Powered by Discord OAuth2
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="text-center text-sm text-gray-500">
+            <p>By signing in, you agree to our</p>
+            <a href="#" class="font-medium text-indigo-600 hover:text-indigo-500">
+                Terms of Service
+            </a>
+            <span> and </span>
+            <a href="#" class="font-medium text-indigo-600 hover:text-indigo-500">
+                Privacy Policy
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
