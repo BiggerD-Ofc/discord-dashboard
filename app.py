@@ -29,6 +29,13 @@ def create_app():
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
+    # fake stats (aby dashboard nepadal)
+    def get_fake_stats():
+        return {
+            "total_servers": 0,
+            "total_users": 0
+        }
+
     @app.route("/")
     def home():
         if "user" in session:
@@ -42,7 +49,6 @@ def create_app():
     @app.route("/callback")
     def callback():
         code = request.args.get("code")
-
         if not code:
             return "Missing code", 400
 
@@ -54,16 +60,9 @@ def create_app():
             "redirect_uri": REDIRECT_URI,
         }
 
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-        token_response = requests.post(
-            TOKEN_URL,
-            data=data,
-            headers=headers
-        )
-
+        token_response = requests.post(TOKEN_URL, data=data, headers=headers)
         token_json = token_response.json()
 
         access_token = token_json.get("access_token")
@@ -73,26 +72,16 @@ def create_app():
 
         user_response = requests.get(
             USER_URL,
-            headers={
-                "Authorization": f"Bearer {access_token}"
-            }
+            headers={"Authorization": f"Bearer {access_token}"}
         )
 
         user = user_response.json()
 
-        avatar_url = None
-        if user.get("avatar"):
-            avatar_url = (
-                f"https://cdn.discordapp.com/avatars/"
-                f"{user['id']}/{user['avatar']}.png"
-            )
-
         session["user"] = {
             "id": user["id"],
-            "username": user["username"],
-            "discriminator": user.get("discriminator", "0000"),
-            "email": user.get("email"),
-            "avatar": avatar_url
+            "username": user["username"],   # FIX
+            "avatar": user.get("avatar"),
+            "email": user.get("email")
         }
 
         return redirect(url_for("dashboard"))
@@ -107,11 +96,13 @@ def create_app():
         if "user" not in session:
             return redirect(url_for("home"))
 
+        stats = get_fake_stats()
+
         return render_template(
             "dashboard.html",
             user=session["user"],
-            total_users=0,
-            total_servers=0,
+            total_servers=stats["total_servers"],
+            total_users=stats["total_users"],
             user_guilds=[],
             bot_servers=[]
         )
@@ -120,18 +111,13 @@ def create_app():
     def servers():
         if "user" not in session:
             return redirect(url_for("home"))
-
-        return render_template(
-            "servers.html",
-            user=session["user"]
-        )
+        return render_template("servers.html", user=session["user"])
 
     @app.route("/api/stats")
     def stats():
         return {
-            "status": "ok",
-            "total_users": 0,
-            "total_servers": 0
+            "total_servers": 0,
+            "total_users": 0
         }
 
     return app
@@ -141,7 +127,4 @@ app = create_app()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(
-        host="0.0.0.0",
-        port=port
-    )
+    app.run(host="0.0.0.0", port=port)
