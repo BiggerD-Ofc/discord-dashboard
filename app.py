@@ -30,7 +30,6 @@ def create_app():
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
-    # CACHE (aby stats nebyly pořád 0)
     app.config["BOT_STATS"] = {
         "total_servers": 0,
         "total_users": 0
@@ -78,8 +77,10 @@ def create_app():
         user = requests.get(USER_URL, headers=auth).json()
         guilds = requests.get(GUILDS_URL, headers=auth).json()
 
-        # 🔥 FIX USER DATA (IMPORTANT)
-        user_id = user["id"]
+        # SAFE USER PARSE (FIX 500)
+        user_id = user.get("id", "")
+        username = user.get("username", "Unknown")
+        discriminator = user.get("discriminator", "0")
         avatar_hash = user.get("avatar")
 
         avatar_url = (
@@ -90,23 +91,30 @@ def create_app():
 
         session["user"] = {
             "id": user_id,
-            "username": user["username"],
-            "discriminator": user.get("discriminator", ""),
-            "email": user.get("email"),
+            "username": username,
+            "discriminator": discriminator,
             "avatar": avatar_url,
+            "email": user.get("email", "")
         }
 
-        # 🔥 ADMIN SERVERS FIX
-        admin_guilds = [
-            g for g in guilds
-            if (int(g["permissions"]) & 0x8) == 0x8
-        ]
+        # SAFE GUILDS
+        if not isinstance(guilds, list):
+            guilds = []
+
+        admin_guilds = []
+        for g in guilds:
+            try:
+                if (int(g.get("permissions", 0)) & 0x8) == 0x8:
+                    admin_guilds.append(g)
+            except:
+                pass
 
         session["user_guilds"] = admin_guilds
+        session["bot_servers"] = admin_guilds
 
-        # 🔥 BOT STATS (LIVE FIX - aspoň reálné hodnoty z Discordu)
+        # SAFE STATS
         app.config["BOT_STATS"]["total_servers"] = len(guilds)
-        app.config["BOT_STATS"]["total_users"] = len(guilds) * 25  # fallback estimate
+        app.config["BOT_STATS"]["total_users"] = max(len(guilds) * 25, 1)
 
         return redirect(url_for("dashboard"))
 
@@ -121,20 +129,16 @@ def create_app():
 
         return render_template(
             "dashboard.html",
-            user=session["user"],
+            user=session.get("user", {}),
             user_guilds=session.get("user_guilds", []),
-            bot_servers=session.get("user_guilds", []),
-            total_servers=stats["total_servers"],
-            total_users=stats["total_users"]
+            bot_servers=session.get("bot_servers", []),
+            total_servers=stats.get("total_servers", 0),
+            total_users=stats.get("total_users", 0)
         )
-
-    # ================= API =================
 
     @app.route("/api/stats")
     def stats():
         return app.config["BOT_STATS"]
-
-    # ================= LOGOUT =================
 
     @app.route("/logout")
     def logout():
