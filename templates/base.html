@@ -18,7 +18,7 @@
                 <div class="flex items-center">
                     <div class="flex-shrink-0 flex items-center">
                         <img src="{{ url_for('static', filename='img/bot-logo.png') }}" alt="Bot Logo" class="h-8 w-8 mr-2 rounded-full">
-                        <span class="text-xl font-bold bg-gradient-to-r from-indigo-500 to-purple-600 bg-clip-text text-transparent">Mr.Afton</span>
+                        <span class="text-xl font-bold bg-gradient-to-r from-indigo-500 to-purple-600 bg-clip-text text-transparent">Quanty</span>
                     </div>
                     {% if 'user' in session or user %}
                     <div class="hidden md:ml-6 md:flex md:space-x-4">
@@ -28,7 +28,7 @@
                         <a href="{{ url_for('servers') }}" class="{% if active_page == 'servers' %}bg-indigo-700{% else %}hover:bg-indigo-500{% endif %} px-3 py-2 rounded-md text-sm font-medium">
                             <i class="fas fa-server mr-1"></i> Server Management
                         </a>
-                        <a href="https://www.mrafton.linkpc.net" target="_blank" rel="noopener noreferrer" class="hover:bg-indigo-500 px-3 py-2 rounded-md text-sm font-medium">
+                        <a href="https://www.quanty.linkpc.net" target="_blank" rel="noopener noreferrer" class="hover:bg-indigo-500 px-3 py-2 rounded-md text-sm font-medium">
                             <i class="fas fa-globe mr-1"></i> Main Website
                         </a>
                     </div>
