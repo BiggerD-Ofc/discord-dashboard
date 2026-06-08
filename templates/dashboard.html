@@ -1,355 +1,179 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Quanty Dashboard{% endblock %}
+{% block title %}Dashboard - Quanty{% endblock %}
 
 {% block content %}
+
 <div class="mb-8 flex items-center justify-between">
-    <div>
-        <div class="flex items-center">
-            <img src="{{ url_for('static', filename='img/bot-logo.png') }}" alt="Bot Logo" class="h-12 w-12 mr-3 rounded-full">
-            <div>
-                <h1 class="text-3xl font-bold text-gray-900">Welcome back, {{ user.username }}!</h1>
-                <p class="mt-1 text-sm text-gray-500">Here's what's happening with your bot.</p>
-            </div>
+    <div class="flex items-center">
+        <img src="{{ user.avatar if user and user.avatar else 'https://cdn.discordapp.com/embed/avatars/0.png' }}"
+             class="h-12 w-12 mr-3 rounded-full"
+             alt="avatar">
+
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">
+                Welcome back, {{ user.username if user else "User" }}!
+            </h1>
+            <p class="text-sm text-gray-500">Dashboard overview</p>
         </div>
     </div>
+
     <div class="hidden md:block">
-        <span class="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800">
-            <span class="flex h-2 w-2 rounded-full bg-green-500 mr-2"></span>
+        <span class="px-4 py-2 rounded-full text-sm bg-green-100 text-green-700">
             Bot Online
         </span>
     </div>
 </div>
 
-<!-- User Profile and Quick Stats -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-    <!-- User Profile Card -->
-    <div class="bg-white overflow-hidden shadow rounded-lg">
-        <div class="p-6">
-            <div class="flex items-center">
-                <img class="h-16 w-16 rounded-full" 
-                     src="{{ user.avatar if user.avatar else 'https://cdn.discordapp.com/embed/avatars/0.png' }}" 
-                     alt="{{ user.username }}">
-                <div class="ml-4">
-                    <h2 class="text-xl font-semibold text-gray-900">{{ user.username }}</h2>
-                    <p class="text-sm text-gray-500">
-                        <i class="fas fa-hashtag"></i> {{ user.discriminator }}
-                    </p>
-                    {% if user.email %}
-                    <p class="text-sm text-gray-500 mt-1">
-                        <i class="far fa-envelope"></i> {{ user.email }}
-                    </p>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="mt-4 pt-4 border-t border-gray-200">
-                <div class="grid grid-cols-3 gap-4 text-sm text-gray-500">
-                    <div class="text-center p-2 bg-gray-50 rounded-lg">
-                        <p class="text-2xl font-bold text-indigo-600">{{ user_guilds|length }}</p>
-                        <p class="text-sm text-gray-600">Admin Servers</p>
-                    </div>
-                    <div class="text-center p-2 bg-gray-50 rounded-lg">
-                        <p class="text-2xl font-bold text-indigo-600 total-servers">{{ total_servers }}</p>
-                        <p class="text-sm text-gray-600">Total Servers</p>
-                    </div>
-                    <div class="text-center p-2 bg-gray-50 rounded-lg">
-                        <p class="text-2xl font-bold text-indigo-600 total-users">
-                            {% if total_users is defined and total_users is not none %}
-                                {{ "{:,}".format(total_users) }}
-                            {% else %}
-                                0
-                            {% endif %}
-                        </p>
-                        <p class="text-sm text-gray-600">Total Users</p>
-                    </div>
-                </div>
-            </div>
-        </div>
+<!-- STATS CARDS (NO JS, NO API) -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+
+    <div class="bg-white shadow rounded-lg p-5 text-center">
+        <p class="text-sm text-gray-500">Admin Servers</p>
+        <p class="text-3xl font-bold text-indigo-600">
+            {{ user_guilds|length if user_guilds else 0 }}
+        </p>
     </div>
 
-    <!-- Bot Stats Card -->
-    <div class="lg:col-span-2 bg-white shadow rounded-lg overflow-hidden">
-        <div class="px-6 py-5 border-b border-gray-200">
-            <h3 class="text-lg leading-6 font-medium text-gray-900">Bot Statistics</h3>
-        </div>
-        <div class="px-6 py-5">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div class="p-4 bg-indigo-50 rounded-lg text-center">
-                    <p class="text-sm font-medium text-indigo-600">Total Servers</p>
-                    <p class="mt-1 text-3xl font-semibold text-gray-900" id="server-count">{{ total_servers }}</p>
-                </div>
-                <div class="p-4 bg-green-50 rounded-lg text-center">
-                    <p class="text-sm font-medium text-green-600">Total Users</p>
-                    <p class="mt-1 text-3xl font-semibold text-gray-900" id="user-count">
-                        {{ "{:,}".format(total_users) }}
-                    </p>
-                </div>
-                <div class="p-4 bg-purple-50 rounded-lg text-center">
-                    <p class="text-sm font-medium text-purple-600">Uptime</p>
-                    <p class="mt-1 text-3xl font-semibold text-gray-900">100%</p>
-                </div>
-            </div>
-        </div>
+    <div class="bg-white shadow rounded-lg p-5 text-center">
+        <p class="text-sm text-gray-500">Total Servers</p>
+        <p class="text-3xl font-bold text-indigo-600">
+            {{ total_servers if total_servers is not none else 0 }}
+        </p>
     </div>
 
+    <div class="bg-white shadow rounded-lg p-5 text-center">
+        <p class="text-sm text-gray-500">Total Users</p>
+        <p class="text-3xl font-bold text-indigo-600">
+            {{ "{:,}".format(total_users) if total_users else 0 }}
+        </p>
+    </div>
 
 </div>
 
-<!-- Bot's Servers -->
-<div class="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
-    <div class="px-6 py-5 border-b border-gray-200">
-        <h3 class="text-lg leading-6 font-medium text-gray-900">Your Admin Servers</h3>
-        <p class="mt-1 text-sm text-gray-500">Servers where you have administrator permissions</p>
+<!-- USER INFO -->
+<div class="bg-white shadow rounded-lg p-6 mb-8">
+
+    <div class="flex items-center mb-4">
+        <img src="{{ user.avatar if user and user.avatar else 'https://cdn.discordapp.com/embed/avatars/0.png' }}"
+             class="h-16 w-16 rounded-full mr-4">
+
+        <div>
+            <p class="text-xl font-semibold">
+                {{ user.username if user else "Unknown user" }}
+            </p>
+            <p class="text-sm text-gray-500">
+                ID: {{ user.id if user else "N/A" }}
+            </p>
+        </div>
     </div>
-    {% if user_guilds %}
-    <ul class="divide-y divide-gray-200">
-        {% for server in user_guilds %}
-        <li class="px-6 py-4">
-            <div class="flex items-center">
-                {% if server.icon_url %}
-                <img class="h-10 w-10 rounded-full mr-4" src="{{ server.icon_url }}" alt="{{ server.name }}" onerror="this.onerror=null; this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
-                {% else %}
-                <div class="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-semibold mr-4">
-                    {{ server.name|first|upper }}
-                </div>
-                {% endif %}
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-gray-900 truncate">{{ server.name }}</p>
-                    <p class="text-sm text-gray-500">{{ server.member_count|default('0') }} members</p>
-                </div>
-                <div>
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+
+</div>
+
+<!-- ADMIN SERVERS -->
+<div class="bg-white shadow rounded-lg mb-8">
+
+    <div class="p-5 border-b">
+        <h2 class="text-lg font-semibold">Your Admin Servers</h2>
+        <p class="text-sm text-gray-500">Servers where you have admin permission</p>
+    </div>
+
+    <div class="p-4">
+
+        {% if user_guilds and user_guilds|length > 0 %}
+
+            <div class="space-y-3">
+
+                {% for server in user_guilds %}
+
+                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+
+                    <div class="flex items-center">
+
+                        <img class="h-10 w-10 rounded-full mr-3"
+                             src="{{ server.icon_url if server.icon_url else 'https://cdn.discordapp.com/embed/avatars/0.png' }}">
+
+                        <div>
+                            <p class="font-medium text-gray-900">
+                                {{ server.name }}
+                            </p>
+                            <p class="text-xs text-gray-500">
+                                ID: {{ server.id }}
+                            </p>
+                        </div>
+
+                    </div>
+
+                    <span class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
                         Admin
                     </span>
+
                 </div>
+
+                {% endfor %}
+
             </div>
-        </li>
-        {% endfor %}
-    </ul>
-    {% else %}
-    <div class="px-6 py-4 text-center">
-        <p class="text-gray-500">You don't have admin permissions in any servers.</p>
+
+        {% else %}
+
+            <p class="text-gray-500 text-center py-6">
+                You don't have admin permissions in any servers.
+            </p>
+
+        {% endif %}
+
     </div>
-    {% endif %}
 </div>
 
-{% if bot_servers %}
-<div class="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
-    <div class="px-6 py-5 border-b border-gray-200">
-        <h3 class="text-lg leading-6 font-medium text-gray-900">Your Bot's Servers</h3>
-        <p class="mt-1 text-sm text-gray-500">Servers where your bot has been added</p>
+<!-- BOT SERVERS -->
+<div class="bg-white shadow rounded-lg">
+
+    <div class="p-5 border-b">
+        <h2 class="text-lg font-semibold">Bot Servers</h2>
     </div>
-    <div class="bg-white">
-        <ul class="divide-y divide-gray-200">
-            {% for server in bot_servers %}
-            <li class="px-6 py-4 hover:bg-gray-50">
-                <div class="flex items-center justify-between">
+
+    <div class="p-4">
+
+        {% if bot_servers and bot_servers|length > 0 %}
+
+            <div class="space-y-3">
+
+                {% for server in bot_servers %}
+
+                <div class="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
+
                     <div class="flex items-center">
-                        {% if server.icon_url %}
-                        <img class="h-10 w-10 rounded-full" 
-                             src="{{ server.icon_url }}" 
-                             alt="{{ server.name }}"
-                             onerror="this.onerror=null; this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
-                        {% else %}
-                        <div class="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-semibold">
-                            {{ server.name|first|upper }}
+
+                        <img class="h-10 w-10 rounded-full mr-3"
+                             src="{{ server.icon_url if server.icon_url else 'https://cdn.discordapp.com/embed/avatars/0.png' }}">
+
+                        <div>
+                            <p class="font-medium text-gray-900">{{ server.name }}</p>
+                            <p class="text-xs text-gray-500">{{ server.member_count|default(0) }} members</p>
                         </div>
-                        {% endif %}
-                        <div class="ml-4">
-                            <p class="text-sm font-medium text-gray-900">{{ server.name }}</p>
-                            <div class="flex items-center mt-1">
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ 'bg-green-100 text-green-800' if server.bot_owner else 'bg-gray-100 text-gray-800' }}">
-                                    {{ 'Owner' if server.bot_owner else 'Member' }}
-                                </span>
-                                <span class="ml-2 text-xs text-gray-500">
-                                    <i class="fas fa-users"></i> {{ server.member_count|default('0') }} members
-                                </span>
-                            </div>
-                        </div>
+
                     </div>
-                    <div class="ml-2 flex-shrink-0">
-                        <a href="{{ url_for('servers') }}?server_id={{ server.id }}" 
-                           class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                            <i class="fas fa-cog mr-1"></i> Manage
-                        </a>
-                    </div>
-                </div>
-            </li>
-            {% endfor %}
-        </ul>
-    </div>
-</div>
-{% else %}
-<div class="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
-    <div class="px-6 py-8 text-center">
-        <i class="fas fa-server text-4xl text-gray-300 mb-2"></i>
-        <p class="text-gray-500">Your bot hasn't been added to any servers yet.</p>
-        <p class="text-sm text-gray-400 mt-1">Add your bot to a server to get started.</p>
-    </div>
-</div>
-{% endif %}
 
-<!-- Quick Actions -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-    <div class="bg-white overflow-hidden shadow rounded-lg">
-        <div class="p-5">
-            <div class="flex items-center">
-                <div class="flex-shrink-0 bg-indigo-500 rounded-md p-3">
-                    <i class="fas fa-sliders-h text-white text-xl"></i>
+                    <span class="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded">
+                        {{ "Owner" if server.bot_owner else "Member" }}
+                    </span>
+
                 </div>
-                <div class="ml-5">
-                    <h3 class="text-lg font-medium text-gray-900">Bot Settings</h3>
-                    <p class="mt-1 text-sm text-gray-500">Configure your bot's global settings</p>
-                </div>
+
+                {% endfor %}
+
             </div>
-            <div class="mt-4">
-                <a href="#" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">
-                    Configure <span aria-hidden="true">&rarr;</span>
-                </a>
-            </div>
-        </div>
+
+        {% else %}
+
+            <p class="text-gray-500 text-center py-6">
+                Bot is not in any servers yet.
+            </p>
+
+        {% endif %}
+
     </div>
 
-    <div class="bg-white overflow-hidden shadow rounded-lg">
-        <div class="p-5">
-            <div class="flex items-center">
-                <div class="flex-shrink-0 bg-green-500 rounded-md p-3">
-                    <i class="fas fa-book text-white text-xl"></i>
-                </div>
-                <div class="ml-5">
-                    <h3 class="text-lg font-medium text-gray-900">Documentation</h3>
-                    <p class="mt-1 text-sm text-gray-500">Learn how to use the dashboard</p>
-                </div>
-            </div>
-            <div class="mt-4">
-                <a href="#" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">
-                    View docs <span aria-hidden="true">&rarr;</span>
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <div class="bg-white overflow-hidden shadow rounded-lg">
-        <div class="p-5">
-            <div class="flex items-center">
-                <div class="flex-shrink-0 bg-purple-500 rounded-md p-3">
-                    <i class="fas fa-question-circle text-white text-xl"></i>
-                </div>
-                <div class="ml-5">
-                    <h3 class="text-lg font-medium text-gray-900">Need Help?</h3>
-                    <p class="mt-1 text-sm text-gray-500">Get support from our community</p>
-                </div>
-            </div>
-            <div class="mt-4">
-                <a href="#" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">
-                    Get help <span aria-hidden="true">&rarr;</span>
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
-    <div class="bg-white overflow-hidden shadow rounded-lg">
-        <div class="p-5">
-            <div class="flex items-center">
-                <div class="flex-shrink-0 bg-yellow-500 rounded-md p-3">
-                    <i class="fas fa-terminal text-white text-xl"></i>
-                </div>
-                <div class="ml-5 w-0 flex-1">
-                    <dl>
-                        <dt class="text-sm font-medium text-gray-500 truncate">Commands</dt>
-                        <dd class="flex items-baseline">
-                            <div class="text-2xl font-semibold text-gray-900" id="command-count">--</div>
-                        </dd>
-                    </dl>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Uptime -->
-    <div class="bg-white overflow-hidden shadow rounded-lg">
-        <div class="p-5">
-            <div class="flex items-center">
-                <div class="flex-shrink-0 bg-red-500 rounded-md p-3">
-                    <i class="fas fa-clock text-white text-xl"></i>
-                </div>
-                <div class="ml-5 w-0 flex-1">
-                    <dl>
-                        <dt class="text-sm font-medium text-gray-500 truncate">Uptime</dt>
-                        <dd class="flex items-baseline">
-                            <div class="text-2xl font-semibold text-gray-900" id="uptime">--</div>
-                        </dd>
-                    </dl>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
-<!-- Quick Actions -->
-<div class="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
-    <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
-        <h3 class="text-lg leading-6 font-medium text-gray-900">Quick Actions</h3>
-        <p class="mt-1 max-w-2xl text-sm text-gray-500">Common actions for your bot</p>
-    </div>
-    <div class="bg-gray-50 px-4 py-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
-        <button class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-            <i class="fas fa-sync-alt mr-2"></i> Restart Bot
-        </button>
-        <button class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-            <i class="fas fa-terminal mr-2"></i> Open Console
-        </button>
-        <button class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
-            <i class="fas fa-cog mr-2"></i> Settings
-        </button>
-    </div>
-</div>
-
-<!-- Recent Activity -->
-<div class="bg-white shadow overflow-hidden sm:rounded-lg">
-    <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
-        <h3 class="text-lg leading-6 font-medium text-gray-900">Recent Activity</h3>
-        <p class="mt-1 max-w-2xl text-sm text-gray-500">Latest actions and events</p>
-    </div>
-    <div class="bg-white overflow-hidden">
-        <div class="px-4 py-5 sm:p-6">
-            <div class="text-center py-8 text-gray-500">
-                <i class="fas fa-inbox text-4xl mb-2"></i>
-                <p>No recent activity to display</p>
-            </div>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-// Update stats
-function updateStats() {
-    fetch('/api/stats')
-        .then(response => response.json())
-        .then(data => {
-            if (data.total_servers) {
-                const totalServers = document.querySelector('.total-servers');
-                if (totalServers) totalServers.textContent = data.total_servers.toLocaleString();
-                
-                const serverCount = document.getElementById('server-count');
-                if (serverCount) serverCount.textContent = data.total_servers.toLocaleString();
-            }
-            
-            if (data.total_users) {
-                const totalUsers = document.querySelector('.total-users');
-                if (totalUsers) totalUsers.textContent = data.total_users.toLocaleString();
-                
-                const userCount = document.getElementById('user-count');
-                if (userCount) userCount.textContent = data.total_users.toLocaleString();
-            }
-        })
-        .catch(error => console.error('Error fetching stats:', error));
-}
-
-// Update stats every 30 seconds
-updateStats();
-setInterval(updateStats, 30000);
-</script>
 {% endblock %}
