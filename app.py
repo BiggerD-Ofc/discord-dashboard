@@ -1,11 +1,15 @@
 import os
+import logging
+from datetime import timedelta
+from flask import Flask, render_template, redirect, url_for, session, request
 import requests
-from flask import Flask, render_template, redirect, session, request
 
-CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("dashboard")
+
+CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "1256909611341189193")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-BOT_TOKEN = os.getenv("DISCORD_TOKEN")
-REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
+REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "https://dash.quanty-bot.linkpc.net/callback")
 
 OAUTH_URL = (
     "https://discord.com/oauth2/authorize"
@@ -20,135 +24,130 @@ USER_URL = "https://discord.com/api/users/@me"
 GUILDS_URL = "https://discord.com/api/users/@me/guilds"
 
 
-def get_user_guilds(token):
-    if not token:
-        return []
-    try:
-        r = requests.get(GUILDS_URL, headers={"Authorization": f"Bearer {token}"})
-        return r.json() if r.status_code == 200 else []
-    except:
-        return []
-
-
-def get_bot_guilds():
-    if not BOT_TOKEN:
-        return []
-    try:
-        r = requests.get(GUILDS_URL, headers={"Authorization": f"Bot {BOT_TOKEN}"})
-        return r.json() if r.status_code == 200 else []
-    except:
-        return []
+def avatar_url(user_id, avatar):
+    if avatar:
+        return f"https://cdn.discordapp.com/avatars/{user_id}/{avatar}.png"
+    return "https://cdn.discordapp.com/embed/avatars/0.png"
 
 
 def create_app():
-    app = Flask(__name__)
-    app.secret_key = os.getenv("SECRET_KEY", "dev-key")
+    app = Flask(__name__, static_folder="static")
 
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
+    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+
+    # =====================
+    # HOME
+    # =====================
     @app.route("/")
     def home():
         if "user" in session:
-            return redirect("/dashboard")
-        return redirect("/login")
+            return redirect(url_for("dashboard"))
+        return render_template("login.html")
 
+    # =====================
+    # LOGIN
+    # =====================
     @app.route("/login")
     def login():
         return redirect(OAUTH_URL)
 
+    # =====================
+    # CALLBACK (FIXED)
+    # =====================
     @app.route("/callback")
     def callback():
         code = request.args.get("code")
         if not code:
             return "Missing code", 400
 
-        token_response = requests.post(
-            TOKEN_URL,
-            data={
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": REDIRECT_URI,
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-
-        token_json = token_response.json()
-        access_token = token_json.get("access_token")
-
-        if not access_token:
-            return f"Token error: {token_json}", 400
-
-        user_response = requests.get(
-            USER_URL,
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
-
-        user = user_response.json()
-
-        session["user"] = {
-            "id": user.get("id"),
-            "username": user.get("username", "Unknown"),
-            "avatar": user.get("avatar")
+        data = {
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": REDIRECT_URI,
         }
 
-        session["access_token"] = access_token
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-        return redirect("/dashboard")
+        token_res = requests.post(TOKEN_URL, data=data, headers=headers)
+        token_json = token_res.json()
 
+        access_token = token_json.get("access_token")
+        if not access_token:
+            logger.error(f"Token error: {token_json}")
+            return f"Token error: {token_json}", 400
+
+        auth = {"Authorization": f"Bearer {access_token}"}
+
+        user_res = requests.get(USER_URL, headers=auth)
+        user = user_res.json()
+
+        guilds_res = requests.get(GUILDS_URL, headers=auth)
+        guilds = guilds_res.json()
+
+        # admin servers = OWNER nebo ADMIN permission (bit 0x8)
+        admin_guilds = []
+        for g in guilds:
+            perms = int(g.get("permissions", 0))
+            if perms & 0x8 or g.get("owner"):
+                admin_guilds.append(g)
+
+        session["user"] = {
+            "id": user["id"],
+            "username": user["username"],
+            "discriminator": user.get("discriminator", "0"),
+            "avatar": avatar_url(user["id"], user.get("avatar")),
+            "email": user.get("email"),
+        }
+
+        session["guilds"] = guilds
+        session["admin_guilds"] = admin_guilds
+
+        return redirect(url_for("dashboard"))
+
+    # =====================
+    # DASHBOARD (FIXED SAFE)
+    # =====================
     @app.route("/dashboard")
     def dashboard():
         if "user" not in session:
-            return redirect("/login")
+            return redirect(url_for("home"))
 
-        token = session.get("access_token")
-
-        user_guilds = get_user_guilds(token)
-
-        # FIX ADMIN SERVERS (SAFE)
-        admin_guilds = []
-        for g in user_guilds:
-            try:
-                perms = int(g.get("permissions") or 0)
-                if perms & 0x8:
-                    admin_guilds.append(g)
-            except:
-                pass
-
-        bot_guilds = get_bot_guilds()
+        guilds = session.get("guilds", [])
+        admin_guilds = session.get("admin_guilds", [])
 
         return render_template(
             "dashboard.html",
             user=session["user"],
             user_guilds=admin_guilds,
-            bot_servers=bot_guilds,
-            total_servers=len(bot_guilds),
-            total_users=len(bot_guilds)
+            bot_servers=guilds,
+            total_servers=len(guilds),
+            total_users=sum(int(g.get("approximate_member_count", 0) or 0) for g in guilds)
         )
 
-    @app.route("/servers")
-    def servers():
-        if "user" not in session:
-            return redirect("/login")
-
-        return render_template(
-            "servers.html",
-            user=session["user"],
-            user_guilds=get_user_guilds(session.get("access_token")),
-            bot_servers=[]
-        )
-
-    @app.route("/api/stats")
-    def stats():
-        bot_guilds = get_bot_guilds()
-        return {
-            "total_servers": len(bot_guilds),
-            "total_users": len(bot_guilds)
-        }
-
+    # =====================
     @app.route("/logout")
     def logout():
         session.clear()
-        return redirect("/")
+        return redirect(url_for("home"))
+
+    # =====================
+    @app.route("/servers")
+    def servers():
+        if "user" not in session:
+            return redirect(url_for("home"))
+        return render_template("servers.html", user=session["user"])
+
+    # =====================
+    @app.route("/api/stats")
+    def stats():
+        guilds = session.get("guilds", [])
+        return {
+            "total_servers": len(guilds),
+            "total_users": sum(int(g.get("approximate_member_count", 0) or 0) for g in guilds)
+        }
 
     return app
 
@@ -156,4 +155,5 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
