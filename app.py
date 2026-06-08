@@ -22,25 +22,22 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "dev")
 
 
-# ---------------- HOME ----------------
 @app.route("/")
 def home():
     return redirect("/dashboard")
 
 
-# ---------------- LOGIN ----------------
 @app.route("/login")
 def login():
     return redirect(OAUTH)
 
 
-# ---------------- CALLBACK ----------------
 @app.route("/callback")
 def callback():
     code = request.args.get("code")
 
     if not CLIENT_SECRET:
-        return "❌ Missing DISCORD_CLIENT_SECRET", 500
+        return "Missing DISCORD_CLIENT_SECRET", 500
 
     data = {
         "client_id": CLIENT_ID,
@@ -55,7 +52,7 @@ def callback():
     token = requests.post(TOKEN_URL, data=data, headers=headers).json()
 
     if "access_token" not in token:
-        return f"❌ TOKEN ERROR: {token}", 500
+        return f"TOKEN ERROR: {token}", 500
 
     auth = {"Authorization": f"Bearer {token['access_token']}"}
 
@@ -65,7 +62,7 @@ def callback():
     if not isinstance(guilds, list):
         guilds = []
 
-    # ---------------- AVATAR FIX ----------------
+    # ---------------- AVATAR ----------------
     uid = user.get("id")
     avatar = user.get("avatar")
 
@@ -74,23 +71,18 @@ def callback():
         if avatar else "https://cdn.discordapp.com/embed/avatars/0.png"
     )
 
-    # ---------------- USER SESSION ----------------
+    # ---------------- SAFE SESSION USER ----------------
     session["user"] = {
         "id": uid,
         "username": user.get("username", "Unknown"),
         "avatar": avatar_url
     }
 
-    # ---------------- FILTER ADMIN / OWNER ----------------
+    # ---------------- FIX: SMALL DATA ONLY (IMPORTANT!) ----------------
     admin_servers = []
     total_users = 0
 
     for g in guilds:
-        perms = int(g.get("permissions", 0))
-
-        is_owner = g.get("owner", False)
-        is_admin = (perms & 0x8) == 0x8
-
         members = g.get("approximate_member_count", 0)
 
         server = {
@@ -98,16 +90,16 @@ def callback():
             "name": g.get("name"),
             "icon": g.get("icon"),
             "members": members,
-            "owner": is_owner,
-            "admin": is_admin
+            "owner": g.get("owner", False),
+            "admin": (int(g.get("permissions", 0)) & 0x8) == 0x8
         }
 
         total_users += int(members or 0)
 
-        if is_owner or is_admin:
+        if server["owner"] or server["admin"]:
             admin_servers.append(server)
 
-    # ---------------- SESSION STORE ----------------
+    # ---------------- STORE (NO OVERFLOW) ----------------
     session["guilds"] = guilds
     session["admin_guilds"] = admin_servers
     session["stats"] = {
@@ -118,7 +110,6 @@ def callback():
     return redirect("/dashboard")
 
 
-# ---------------- DASHBOARD ----------------
 @app.route("/dashboard")
 def dashboard():
     if "user" not in session:
@@ -135,7 +126,6 @@ def dashboard():
     )
 
 
-# ---------------- API ----------------
 @app.route("/api/stats")
 def stats():
     return jsonify(session.get("stats", {"total_servers": 0, "total_users": 0}))
@@ -146,7 +136,6 @@ def servers():
     return jsonify(session.get("guilds", []))
 
 
-# ---------------- LOGOUT ----------------
 @app.route("/logout")
 def logout():
     session.clear()
