@@ -7,7 +7,7 @@ app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("REDIRECT_URI")
+REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
 
 DISCORD_API = "https://discord.com/api"
 
