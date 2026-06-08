@@ -36,58 +36,72 @@ def login():
 def callback():
     code = request.args.get("code")
 
-    if not CLIENT_SECRET:
-        return "❌ Missing DISCORD_CLIENT_SECRET in Render env", 500
+    data = {
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": REDIRECT_URI,
+    }
 
-    if not REDIRECT_URI:
-        return "❌ Missing DISCORD_REDIRECT_URI in Render env", 500
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-    try:
-        data = {
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": REDIRECT_URI,
-        }
+    token = requests.post(TOKEN_URL, data=data, headers=headers).json()
+    access_token = token.get("access_token")
 
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    if not access_token:
+        return f"TOKEN ERROR: {token}", 500
 
-        token = requests.post(TOKEN_URL, data=data, headers=headers).json()
+    auth = {"Authorization": f"Bearer {access_token}"}
 
-        if "access_token" not in token:
-            return f"❌ TOKEN ERROR: {token}", 500
+    user = requests.get(USER_URL, headers=auth).json()
+    guilds = requests.get(GUILDS_URL, headers=auth).json()
 
-        auth = {"Authorization": f"Bearer {token['access_token']}"}
+    if not isinstance(guilds, list):
+        guilds = []
 
-        user = requests.get(USER_URL, headers=auth).json()
-        guilds = requests.get(GUILDS_URL, headers=auth).json()
+    # 💥 FIX AVATAR
+    uid = user.get("id")
+    avatar = user.get("avatar")
 
-        if not isinstance(guilds, list):
-            guilds = []
+    if avatar:
+        avatar_url = f"https://cdn.discordapp.com/avatars/{uid}/{avatar}.png"
+    else:
+        avatar_url = "https://cdn.discordapp.com/embed/avatars/0.png"
 
-        avatar = user.get("avatar")
-        uid = user.get("id")
+    # 💥 FIX USER SESSION (KLÍČOVÁ CHYBA BYLA TADY)
+    session["user"] = {
+        "id": uid,
+        "username": user.get("username", "Unknown"),
+        "avatar": avatar_url
+    }
 
-        session["user"] = {
-            "id": uid,
-            "username": user.get("username"),
-            "avatar": (
-                f"https://cdn.discordapp.com/avatars/{uid}/{avatar}.png"
-                if avatar else "https://cdn.discordapp.com/embed/avatars/0.png"
-            )
-        }
+    # 💥 FIX GUILDS + STATS
+    servers = []
 
-        session["guilds"] = guilds
-        session["stats"] = {
-            "total_servers": len(guilds),
-            "total_users": 0
-        }
+    total_users = 0
 
-        return redirect("/dashboard")
+    for g in guilds:
+        servers.append({
+            "id": g.get("id"),
+            "name": g.get("name"),
+            "icon": g.get("icon"),
+            "members": g.get("approximate_member_count", 0)
+        })
 
-    except Exception as e:
-        return f"❌ CALLBACK CRASH: {str(e)}", 500
+        try:
+            total_users += int(g.get("approximate_member_count") or 0)
+        except:
+            pass
+
+    session["guilds"] = servers
+
+    session["stats"] = {
+        "total_servers": len(servers),
+        "total_users": total_users
+    }
+
+    return redirect("/dashboard")
 
 
 @app.route("/dashboard")
@@ -95,12 +109,14 @@ def dashboard():
     if "user" not in session:
         return redirect("/login")
 
+    stats = session.get("stats", {})
+
     return render_template(
         "dashboard.html",
         user=session["user"],
         user_guilds=session.get("guilds", []),
-        total_servers=session.get("stats", {}).get("total_servers", 0),
-        total_users=session.get("stats", {}).get("total_users", 0)
+        total_servers=stats.get("total_servers", 0),
+        total_users=stats.get("total_users", 0)
     )
 
 
@@ -118,3 +134,7 @@ def servers():
 def logout():
     session.clear()
     return redirect("/login")
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
