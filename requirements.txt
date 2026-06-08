@@ -5,3 +5,4 @@ flask-discord
 requests
 python-dotenv
 gunicorn
+pymongo[srv]
