@@ -1,20 +1,17 @@
 import os
-import logging
-from flask import Flask, render_template, redirect, url_for, session, request
 import requests
-
-logging.basicConfig(level=logging.INFO)
+from flask import Flask, render_template, redirect, url_for, session, request
 
 CLIENT_ID = "1256909611341189193"
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 REDIRECT_URI = "https://dash.quanty-bot.linkpc.net/callback"
 
-OAUTH_URL = (
+OAUTH = (
     "https://discord.com/oauth2/authorize"
     f"?client_id={CLIENT_ID}"
     "&response_type=code"
     f"&redirect_uri={REDIRECT_URI}"
-    "&scope=identify%20email%20guilds"
+    "&scope=identify%20email%20guilds%20guilds.members.read"
 )
 
 TOKEN_URL = "https://discord.com/api/oauth2/token"
@@ -24,12 +21,7 @@ GUILDS_URL = "https://discord.com/api/users/@me/guilds"
 
 def create_app():
     app = Flask(__name__)
-    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
-
-    app.config["STATS"] = {
-        "total_servers": 0,
-        "total_users": 0
-    }
+    app.secret_key = os.getenv("SECRET_KEY", "dev")
 
     # ---------------- HOME ----------------
     @app.route("/")
@@ -41,7 +33,7 @@ def create_app():
     # ---------------- LOGIN ----------------
     @app.route("/login")
     def login():
-        return redirect(OAUTH_URL)
+        return redirect(OAUTH)
 
     # ---------------- CALLBACK ----------------
     @app.route("/callback")
@@ -71,17 +63,19 @@ def create_app():
         user = requests.get(USER_URL, headers=auth).json()
         guilds = requests.get(GUILDS_URL, headers=auth).json()
 
+        # ---------------- SAFE GUARDS ----------------
         if not isinstance(guilds, list):
             guilds = []
 
         user_id = user.get("id")
         avatar = user.get("avatar")
 
-        avatar_url = (
-            f"https://cdn.discordapp.com/avatars/{user_id}/{avatar}.png"
-            if avatar else
-            "https://cdn.discordapp.com/embed/avatars/0.png"
-        )
+        # ---------------- AVATAR FIX ----------------
+        if avatar:
+            ext = "gif" if avatar.startswith("a_") else "png"
+            avatar_url = f"https://cdn.discordapp.com/avatars/{user_id}/{avatar}.{ext}"
+        else:
+            avatar_url = "https://cdn.discordapp.com/embed/avatars/0.png"
 
         session["user"] = {
             "id": user_id,
@@ -89,21 +83,29 @@ def create_app():
             "avatar": avatar_url
         }
 
-        # admin guilds
-        admin = []
+        # ---------------- ADMIN SERVERS FIX ----------------
+        admin_guilds = []
+
         for g in guilds:
-            try:
-                if int(g.get("permissions", 0)) & 0x8:
-                    admin.append(g)
-            except:
-                pass
+            perms = int(g.get("permissions", 0))
 
-        session["user_guilds"] = admin
-        session["bot_servers"] = admin
+            # 0x8 = ADMINISTRATOR
+            if perms & 0x8:
+                admin_guilds.append({
+                    "id": g.get("id"),
+                    "name": g.get("name"),
+                    "icon": g.get("icon"),
+                    "member_count": g.get("member_count", 0)
+                })
 
-        # fake stats (bez DB)
-        app.config["STATS"]["total_servers"] = len(guilds)
-        app.config["STATS"]["total_users"] = len(guilds) * 15
+        session["user_guilds"] = admin_guilds
+        session["bot_servers"] = admin_guilds
+
+        # ---------------- STATS (STABLE FAKE BUT CONSISTENT) ----------------
+        session["stats"] = {
+            "total_servers": len(guilds),
+            "total_users": len(guilds) * 12
+        }
 
         return redirect(url_for("dashboard"))
 
@@ -113,7 +115,7 @@ def create_app():
         if "user" not in session:
             return redirect(url_for("home"))
 
-        stats = app.config["STATS"]
+        stats = session.get("stats", {"total_servers": 0, "total_users": 0})
 
         return render_template(
             "dashboard.html",
@@ -124,7 +126,7 @@ def create_app():
             total_users=stats["total_users"]
         )
 
-    # ---------------- SERVERS PAGE ----------------
+    # ---------------- SERVERS ----------------
     @app.route("/servers")
     def servers():
         if "user" not in session:
@@ -136,27 +138,14 @@ def create_app():
             user_guilds=session.get("user_guilds", [])
         )
 
-    # ---------------- API SERVERS ----------------
-    @app.route("/api/servers")
-    def api_servers():
-        if "user" not in session:
-            return {"error": "unauthorized"}, 401
-
-        guilds = session.get("user_guilds", [])
-
-        return [
-            {
-                "id": g.get("id"),
-                "name": g.get("name"),
-                "icon": g.get("icon")
-            }
-            for g in guilds
-        ]
-
-    # ---------------- API STATS ----------------
+    # ---------------- API ----------------
     @app.route("/api/stats")
     def stats():
-        return app.config["STATS"]
+        return session.get("stats", {"total_servers": 0, "total_users": 0})
+
+    @app.route("/api/servers")
+    def api_servers():
+        return session.get("user_guilds", [])
 
     # ---------------- LOGOUT ----------------
     @app.route("/logout")
@@ -170,4 +159,4 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
