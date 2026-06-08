@@ -180,12 +180,21 @@ def servers():
     if not is_logged():
         return redirect(url_for("login"))
 
+    token = session.get("access_token")
+
+    guilds = discord_api("/users/@me/guilds", token)
+
+    # ONLY ADMIN / MANAGE SERVER
+    manageable = [
+        g for g in guilds
+        if (int(g.get("permissions", 0)) & 0x8) or (int(g.get("permissions", 0)) & 0x20)
+    ]
+
     return render_template(
         "servers.html",
-        user=session.get("user")
+        user=session.get("user"),
+        servers=manageable
     )
-
-
 # -------------------------
 # STATS API
 # -------------------------
