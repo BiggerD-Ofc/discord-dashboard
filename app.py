@@ -196,6 +196,28 @@ def servers():
         servers=manageable
     )
 # -------------------------
+# SERVER DETAIL
+# -------------------------
+@app.route("/servers/<server_id>")
+def server_detail(server_id):
+    if not is_logged():
+        return redirect(url_for("login"))
+
+    token = session.get("access_token")
+
+    guilds = get_guilds(token)
+
+    server = next((g for g in guilds if g["id"] == server_id), None)
+
+    if not server:
+        return "Server not found or no permission", 404
+
+    return render_template(
+        "server_detail.html",
+        user=session.get("user"),
+        server=server
+    )
+# -------------------------
 # STATS API
 # -------------------------
 @app.route("/api/stats")
