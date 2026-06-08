@@ -1,6 +1,5 @@
 import os
 import logging
-from datetime import timedelta
 from flask import Flask, render_template, redirect, url_for, session, request
 import requests
 
@@ -24,10 +23,10 @@ GUILDS_URL = "https://discord.com/api/users/@me/guilds"
 
 
 def create_app():
-    app = Flask(__name__, static_folder="static")
+    app = Flask(__name__)
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
 
-    app.config["BOT_STATS"] = {
+    app.config["STATS"] = {
         "total_servers": 0,
         "total_users": 0
     }
@@ -87,7 +86,6 @@ def create_app():
         session["user"] = {
             "id": user_id,
             "username": user.get("username", "Unknown"),
-            "discriminator": user.get("discriminator", ""),
             "avatar": avatar_url
         }
 
@@ -103,9 +101,9 @@ def create_app():
         session["user_guilds"] = admin
         session["bot_servers"] = admin
 
-        # stats (demo)
-        app.config["BOT_STATS"]["total_servers"] = len(guilds)
-        app.config["BOT_STATS"]["total_users"] = max(len(guilds) * 20, 1)
+        # fake stats (bez DB)
+        app.config["STATS"]["total_servers"] = len(guilds)
+        app.config["STATS"]["total_users"] = len(guilds) * 15
 
         return redirect(url_for("dashboard"))
 
@@ -115,11 +113,11 @@ def create_app():
         if "user" not in session:
             return redirect(url_for("home"))
 
-        stats = app.config["BOT_STATS"]
+        stats = app.config["STATS"]
 
         return render_template(
             "dashboard.html",
-            user=session.get("user", {}),
+            user=session["user"],
             user_guilds=session.get("user_guilds", []),
             bot_servers=session.get("bot_servers", []),
             total_servers=stats["total_servers"],
@@ -134,11 +132,11 @@ def create_app():
 
         return render_template(
             "servers.html",
-            user=session.get("user", {}),
+            user=session["user"],
             user_guilds=session.get("user_guilds", [])
         )
 
-    # ---------------- API SERVERS (FIX JS) ----------------
+    # ---------------- API SERVERS ----------------
     @app.route("/api/servers")
     def api_servers():
         if "user" not in session:
@@ -158,7 +156,7 @@ def create_app():
     # ---------------- API STATS ----------------
     @app.route("/api/stats")
     def stats():
-        return app.config["BOT_STATS"]
+        return app.config["STATS"]
 
     # ---------------- LOGOUT ----------------
     @app.route("/logout")
