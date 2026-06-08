@@ -7,6 +7,9 @@ import requests
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dashboard")
 
+# =========================
+# ENV
+# =========================
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
@@ -24,113 +27,129 @@ USER_URL = "https://discord.com/api/users/@me"
 GUILDS_URL = "https://discord.com/api/users/@me/guilds"
 
 
+# =========================
+# APP
+# =========================
 def create_app():
     app = Flask(__name__, static_folder="static")
 
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
-    # =====================
+    # =========================
     # HOME
-    # =====================
+    # =========================
     @app.route("/")
     def home():
         if "user" in session:
             return redirect(url_for("dashboard"))
         return render_template("login.html")
 
-    # =====================
+    # =========================
     # LOGIN
-    # =====================
+    # =========================
     @app.route("/login")
     def login():
         return redirect(OAUTH_URL)
 
-    # =====================
-    # CALLBACK
-    # =====================
+    # =========================
+    # CALLBACK SAFE
+    # =========================
     @app.route("/callback")
     def callback():
         code = request.args.get("code")
+
         if not code:
             return "Missing code", 400
 
-        token_res = requests.post(
-            TOKEN_URL,
-            data={
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": REDIRECT_URI,
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
+        try:
+            token_res = requests.post(
+                TOKEN_URL,
+                data={
+                    "client_id": CLIENT_ID,
+                    "client_secret": CLIENT_SECRET,
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": REDIRECT_URI,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
 
-        token_json = token_res.json()
-        access_token = token_json.get("access_token")
+            token_json = token_res.json()
+            access_token = token_json.get("access_token")
 
-        if not access_token:
-            return f"Token error: {token_json}", 400
+            if not access_token:
+                return f"Token error: {token_json}", 400
 
-        user = requests.get(
-            USER_URL,
-            headers={"Authorization": f"Bearer {access_token}"}
-        ).json()
+            user = requests.get(
+                USER_URL,
+                headers={"Authorization": f"Bearer {access_token}"}
+            ).json()
 
-        session["user"] = {
-            "id": user.get("id"),
-            "username": user.get("username"),
-            "avatar": user.get("avatar")
-        }
+            session["user"] = {
+                "id": user.get("id"),
+                "username": user.get("username", "Unknown"),
+                "avatar": user.get("avatar"),
+            }
 
-        session["access_token"] = access_token
+            session["access_token"] = access_token
 
-        return redirect(url_for("dashboard"))
+            return redirect(url_for("dashboard"))
 
-    # =====================
-    # DASHBOARD (LIVE DATA)
-    # =====================
+        except Exception as e:
+            logger.exception("Callback error")
+            return f"Callback ERROR: {e}", 500
+
+    # =========================
+    # DASHBOARD (NO CRASH + LIVE DATA)
+    # =========================
     @app.route("/dashboard")
     def dashboard():
         if "user" not in session:
             return redirect(url_for("home"))
 
-        access_token = session.get("access_token")
+        token = session.get("access_token")
 
         guilds = []
         admin_guilds = []
 
-        if access_token:
+        if token:
             try:
-                guilds = requests.get(
+                res = requests.get(
                     GUILDS_URL,
-                    headers={"Authorization": f"Bearer {access_token}"}
-                ).json()
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+
+                guilds = res.json()
 
                 if not isinstance(guilds, list):
                     guilds = []
 
                 for g in guilds:
-                    perms = int(g.get("permissions", 0))
-                    if perms & 0x8:
-                        admin_guilds.append(g)
+                    try:
+                        perms = int(g.get("permissions", 0))
+                        if perms & 0x8:
+                            admin_guilds.append(g)
+                    except:
+                        continue
 
             except Exception as e:
                 logger.error(f"Guild fetch error: {e}")
 
+        total_servers = len(guilds)
+
         return render_template(
             "dashboard.html",
             user=session.get("user", {}),
-            total_servers=len(guilds),
-            total_users=len(guilds),  # fallback (Discord nedává member count)
+            total_servers=total_servers,
+            total_users=total_servers,  # Discord OAuth neumí member count
             user_guilds=admin_guilds,
             bot_servers=[]
         )
 
-    # =====================
+    # =========================
     # SERVERS (FIX URL ERROR)
-    # =====================
+    # =========================
     @app.route("/servers")
     def servers():
         if "user" not in session:
@@ -143,39 +162,56 @@ def create_app():
             bot_servers=[]
         )
 
-    # =====================
-    # API
-    # =====================
+    # =========================
+    # API STATS
+    # =========================
     @app.route("/api/stats")
     def stats():
-        access_token = session.get("access_token")
+        token = session.get("access_token")
 
-        if not access_token:
-            return {"total_servers": 0, "total_users": 0}
+        if not token:
+            return {
+                "total_servers": 0,
+                "total_users": 0,
+                "admin_servers": 0
+            }
 
         try:
-            guilds = requests.get(
+            res = requests.get(
                 GUILDS_URL,
-                headers={"Authorization": f"Bearer {access_token}"}
-            ).json()
+                headers={"Authorization": f"Bearer {token}"}
+            )
+
+            guilds = res.json()
 
             if not isinstance(guilds, list):
                 guilds = []
 
-            admin = [g for g in guilds if int(g.get("permissions", 0)) & 0x8]
+            admin = 0
+
+            for g in guilds:
+                try:
+                    if int(g.get("permissions", 0)) & 0x8:
+                        admin += 1
+                except:
+                    continue
 
             return {
                 "total_servers": len(guilds),
                 "total_users": len(guilds),
-                "admin_servers": len(admin)
+                "admin_servers": admin
             }
 
         except:
-            return {"total_servers": 0, "total_users": 0}
+            return {
+                "total_servers": 0,
+                "total_users": 0,
+                "admin_servers": 0
+            }
 
-    # =====================
+    # =========================
     # LOGOUT
-    # =====================
+    # =========================
     @app.route("/logout")
     def logout():
         session.clear()
