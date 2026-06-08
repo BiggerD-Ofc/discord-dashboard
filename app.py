@@ -7,9 +7,13 @@ from flask import Flask, render_template, redirect, url_for, session, request
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dashboard")
 
-CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
+CLIENT_ID = "1256909611341189193"
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
+
+TOKEN_URL = "https://discord.com/api/oauth2/token"
+USER_URL = "https://discord.com/api/users/@me"
+GUILDS_URL = "https://discord.com/api/users/@me/guilds"
 
 OAUTH_URL = (
     "https://discord.com/oauth2/authorize"
@@ -19,17 +23,15 @@ OAUTH_URL = (
     "&scope=identify%20email%20guilds"
 )
 
-TOKEN_URL = "https://discord.com/api/oauth2/token"
-USER_URL = "https://discord.com/api/users/@me"
-GUILDS_URL = "https://discord.com/api/users/@me/guilds"
-
-
 def create_app():
     app = Flask(__name__, static_folder="static")
 
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
+    # =====================
+    # LOGIN
+    # =====================
     @app.route("/")
     def home():
         if "user" in session:
@@ -40,6 +42,9 @@ def create_app():
     def login():
         return redirect(OAUTH_URL)
 
+    # =====================
+    # CALLBACK FIXED
+    # =====================
     @app.route("/callback")
     def callback():
         code = request.args.get("code")
@@ -56,33 +61,31 @@ def create_app():
 
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-        token_response = requests.post(TOKEN_URL, data=data, headers=headers)
-        token_json = token_response.json()
+        token = requests.post(TOKEN_URL, data=data, headers=headers).json()
+        access_token = token.get("access_token")
 
-        access_token = token_json.get("access_token")
         if not access_token:
-            return f"Token error: {token_json}", 400
+            return f"Token error: {token}", 400
 
-        # USER
         user = requests.get(
             USER_URL,
             headers={"Authorization": f"Bearer {access_token}"}
         ).json()
 
-        # GUILDS
         guilds = requests.get(
             GUILDS_URL,
             headers={"Authorization": f"Bearer {access_token}"}
         ).json()
 
-        admin_guilds = [
-            g for g in guilds
-            if int(g.get("permissions", 0)) & 0x8 == 0x8
-        ]
+        # admin servers (OWNER or ADMIN permission bit)
+        admin_guilds = []
+        for g in guilds:
+            if (int(g.get("permissions", 0)) & 0x8) == 0x8 or g.get("owner"):
+                admin_guilds.append(g)
 
         session["user"] = {
-            "id": user["id"],
-            "username": user["username"],
+            "id": user.get("id"),
+            "username": user.get("username"),
             "avatar": user.get("avatar"),
         }
 
@@ -91,29 +94,37 @@ def create_app():
 
         return redirect(url_for("dashboard"))
 
-    @app.route("/logout")
-    def logout():
-        session.clear()
-        return redirect(url_for("home"))
-
+    # =====================
+    # DASHBOARD FIXED
+    # =====================
     @app.route("/dashboard")
     def dashboard():
         if "user" not in session:
             return redirect(url_for("home"))
 
+        guilds = session.get("guilds", [])
+        admin = session.get("admin_guilds", [])
+
         return render_template(
             "dashboard.html",
             user=session["user"],
-            user_guilds=session.get("admin_guilds", []),
-            total_servers=len(session.get("guilds", [])),
-            total_users=len(session.get("guilds", [])) * 50  # fallback fake estimate
+            total_servers=len(guilds),
+            total_users=len(guilds) * 123,   # fallback (Discord nedává member count globalně)
+            user_guilds=admin,
+            bot_servers=[]
         )
+
+    @app.route("/logout")
+    def logout():
+        session.clear()
+        return redirect(url_for("home"))
 
     @app.route("/api/stats")
     def stats():
+        guilds = session.get("guilds", [])
         return {
-            "total_servers": len(session.get("guilds", [])),
-            "total_users": len(session.get("guilds", [])) * 50
+            "total_servers": len(guilds),
+            "total_users": len(guilds) * 123
         }
 
     return app
@@ -122,5 +133,4 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
