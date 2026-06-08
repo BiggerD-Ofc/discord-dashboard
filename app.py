@@ -7,7 +7,6 @@ import requests
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dashboard")
 
-
 CLIENT_ID = "1256909611341189193"
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 REDIRECT_URI = "https://dash.quanty-bot.linkpc.net/callback"
@@ -27,15 +26,8 @@ USER_URL = "https://discord.com/api/users/@me"
 def create_app():
     app = Flask(__name__, static_folder="static")
 
-    # =====================
-    # CONFIG
-    # =====================
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
-
-    # =====================
-    # ROUTES
-    # =====================
 
     @app.route("/")
     def home():
@@ -43,12 +35,10 @@ def create_app():
             return redirect(url_for("dashboard"))
         return render_template("login.html")
 
-    # 🔥 LOGIN (TVŮJ LINK)
     @app.route("/login")
     def login():
         return redirect(OAUTH_URL)
 
-    # 🔥 CALLBACK (DISCORD LOGIN FINISH)
     @app.route("/callback")
     def callback():
         code = request.args.get("code")
@@ -56,7 +46,6 @@ def create_app():
         if not code:
             return "Missing code", 400
 
-        # exchange code -> token
         data = {
             "client_id": CLIENT_ID,
             "client_secret": CLIENT_SECRET,
@@ -69,7 +58,12 @@ def create_app():
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
-        token_response = requests.post(TOKEN_URL, data=data, headers=headers)
+        token_response = requests.post(
+            TOKEN_URL,
+            data=data,
+            headers=headers
+        )
+
         token_json = token_response.json()
 
         access_token = token_json.get("access_token")
@@ -77,18 +71,28 @@ def create_app():
         if not access_token:
             return f"Token error: {token_json}", 400
 
-        # get user
         user_response = requests.get(
             USER_URL,
-            headers={"Authorization": f"Bearer {access_token}"}
+            headers={
+                "Authorization": f"Bearer {access_token}"
+            }
         )
 
         user = user_response.json()
 
+        avatar_url = None
+        if user.get("avatar"):
+            avatar_url = (
+                f"https://cdn.discordapp.com/avatars/"
+                f"{user['id']}/{user['avatar']}.png"
+            )
+
         session["user"] = {
             "id": user["id"],
-            "name": user["username"],
-            "avatar": user.get("avatar"),
+            "username": user["username"],
+            "discriminator": user.get("discriminator", "0000"),
+            "email": user.get("email"),
+            "avatar": avatar_url
         }
 
         return redirect(url_for("dashboard"))
@@ -102,17 +106,33 @@ def create_app():
     def dashboard():
         if "user" not in session:
             return redirect(url_for("home"))
-        return render_template("dashboard.html", user=session["user"])
+
+        return render_template(
+            "dashboard.html",
+            user=session["user"],
+            total_users=0,
+            total_servers=0,
+            user_guilds=[],
+            bot_servers=[]
+        )
 
     @app.route("/servers")
     def servers():
         if "user" not in session:
             return redirect(url_for("home"))
-        return render_template("servers.html", user=session["user"])
+
+        return render_template(
+            "servers.html",
+            user=session["user"]
+        )
 
     @app.route("/api/stats")
     def stats():
-        return {"status": "ok"}
+        return {
+            "status": "ok",
+            "total_users": 0,
+            "total_servers": 0
+        }
 
     return app
 
@@ -121,4 +141,7 @@ app = create_app()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(
+        host="0.0.0.0",
+        port=port
+    )
