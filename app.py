@@ -1,7 +1,7 @@
 import os
 import logging
-import requests
 import time
+import requests
 from datetime import timedelta
 from flask import Flask, render_template, redirect, url_for, session, request
 
@@ -21,7 +21,7 @@ REDIRECT_URI = os.getenv(
 )
 
 # =========================
-# DISCORD OAUTH
+# OAUTH URL
 # =========================
 OAUTH_URL = (
     "https://discord.com/oauth2/authorize"
@@ -36,11 +36,11 @@ USER_URL = "https://discord.com/api/users/@me"
 GUILDS_URL = "https://discord.com/api/users/@me/guilds"
 
 # =========================
-# CACHE (anti rate-limit)
+# CACHE
 # =========================
 CACHE = {
     "time": 0,
-    "stats": {}
+    "data": {}
 }
 CACHE_TTL = 30
 
@@ -70,25 +70,36 @@ def create_app():
 
         return r.json()
 
+    def get_total_users():
+        guilds = get_bot_guilds()
+        return sum(g.get("approximate_member_count", 0) for g in guilds)
+
+    def get_admin_servers():
+        guilds = get_bot_guilds()
+
+        admins = []
+        for g in guilds:
+            perms = int(g.get("permissions", 0))
+            if perms & 0x8:  # ADMINISTRATOR
+                admins.append(g)
+
+        return admins
+
     def get_stats():
         now = time.time()
 
-        if CACHE["stats"] and now - CACHE["time"] < CACHE_TTL:
-            return CACHE["stats"]
+        if CACHE["data"] and now - CACHE["time"] < CACHE_TTL:
+            return CACHE["data"]
 
         guilds = get_bot_guilds()
 
-        total_servers = len(guilds)
-        total_users = sum(
-            g.get("approximate_member_count", 0) for g in guilds
-        )
-
         data = {
-            "total_servers": total_servers,
-            "total_users": total_users
+            "total_servers": len(guilds),
+            "total_users": get_total_users(),
+            "admin_servers": len(get_admin_servers())
         }
 
-        CACHE["stats"] = data
+        CACHE["data"] = data
         CACHE["time"] = now
 
         return data
@@ -109,7 +120,7 @@ def create_app():
         session.clear()
         return redirect(OAUTH_URL)
 
-    # CALLBACK (FIXED)
+    # CALLBACK
     @app.route("/callback")
     def callback():
         code = request.args.get("code")
@@ -129,25 +140,22 @@ def create_app():
             "Content-Type": "application/x-www-form-urlencoded"
         }
 
-        token_response = requests.post(TOKEN_URL, data=data, headers=headers)
-        token_json = token_response.json()
+        token = requests.post(TOKEN_URL, data=data, headers=headers).json()
 
-        access_token = token_json.get("access_token")
+        access_token = token.get("access_token")
 
         if not access_token:
-            return f"Token error: {token_json}", 400
+            return f"Token error: {token}", 400
 
-        user_response = requests.get(
+        user = requests.get(
             USER_URL,
             headers={"Authorization": f"Bearer {access_token}"}
-        )
-
-        user = user_response.json()
+        ).json()
 
         session["user"] = {
             "id": user["id"],
             "name": user["username"],
-            "avatar": user.get("avatar"),
+            "avatar": user.get("avatar")
         }
 
         return redirect(url_for("dashboard"))
@@ -170,7 +178,10 @@ def create_app():
             "dashboard.html",
             user=session["user"],
             total_servers=stats["total_servers"],
-            total_users=stats["total_users"]
+            total_users=stats["total_users"],
+            admin_servers=stats["admin_servers"],
+            user_guilds=get_admin_servers(),
+            bot_servers=get_bot_guilds()
         )
 
     # SERVERS
@@ -181,7 +192,7 @@ def create_app():
 
         return render_template("servers.html", user=session["user"])
 
-    # API STATS (LIVE)
+    # API STATS
     @app.route("/api/stats")
     def api_stats():
         return get_stats()
