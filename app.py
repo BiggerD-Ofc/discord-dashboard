@@ -5,6 +5,7 @@ from flask import Flask, redirect, url_for, session, request, render_template, j
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
+# ENV (SAFE)
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
@@ -13,17 +14,29 @@ DISCORD_API = "https://discord.com/api"
 
 
 # -------------------------
+# SAFETY CHECK (PREVENT None CRASH)
+# -------------------------
+if not CLIENT_ID or not CLIENT_SECRET or not REDIRECT_URI:
+    print("❌ Missing ENV variables (DISCORD_CLIENT_ID / SECRET / REDIRECT_URI)")
+
+
+# -------------------------
 # HELPERS
 # -------------------------
 def discord_api(endpoint, token):
-    return requests.get(
+    r = requests.get(
         f"{DISCORD_API}{endpoint}",
         headers={"Authorization": f"Bearer {token}"}
-    ).json()
+    )
+    return r.json()
 
 
 def is_logged():
-    return "access_token" in session
+    return session.get("access_token") is not None
+
+
+def get_guilds(token):
+    return discord_api("/users/@me/guilds", token)
 
 
 # -------------------------
@@ -39,6 +52,9 @@ def home():
 # -------------------------
 @app.route("/login")
 def login():
+    if not CLIENT_ID or not REDIRECT_URI:
+        return "OAuth config error (ENV missing)", 500
+
     return redirect(
         "https://discord.com/oauth2/authorize"
         f"?client_id={CLIENT_ID}"
@@ -67,7 +83,9 @@ def callback():
         "scope": "identify email guilds"
     }
 
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
 
     r = requests.post(
         f"{DISCORD_API}/oauth2/token",
@@ -86,17 +104,20 @@ def callback():
     # USER INFO
     user = discord_api("/users/@me", access_token)
 
-    # GUILDS (CUT DOWN = FIX COOKIE SIZE)
-    guilds_raw = discord_api("/users/@me/guilds", access_token)
+    # ⚠️ IMPORTANT FIX:
+    # DO NOT STORE GUILDS IN SESSION (COOKIE LIMIT FIX)
+    guilds_raw = get_guilds(access_token)
 
-    guilds = []
-    for g in guilds_raw:
-        guilds.append({
+    # FILTER + CLEAN ONLY (NO SESSION STORAGE)
+    guilds = [
+        {
             "id": g["id"],
             "name": g["name"],
             "icon": g.get("icon"),
             "permissions": g.get("permissions", "0")
-        })
+        }
+        for g in guilds_raw
+    ]
 
     session["user"] = {
         "id": user["id"],
@@ -106,8 +127,6 @@ def callback():
             if user.get("avatar") else None
         )
     }
-
-    session["guilds"] = guilds
 
     return redirect(url_for("dashboard"))
 
@@ -129,10 +148,13 @@ def dashboard():
     if not is_logged():
         return redirect(url_for("login"))
 
+    access_token = session.get("access_token")
     user = session.get("user")
-    guilds = session.get("guilds", [])
 
-    # ADMIN FILTER (0x8 = ADMIN)
+    # LIVE GUILDS (NO SESSION)
+    guilds = get_guilds(access_token)
+
+    # ADMIN FILTER
     user_guilds = [
         g for g in guilds
         if int(g.get("permissions", 0)) & 0x8
@@ -151,7 +173,7 @@ def dashboard():
 
 
 # -------------------------
-# SERVERS PAGE (FIX FOR BUILDERROR)
+# SERVERS PAGE
 # -------------------------
 @app.route("/servers")
 def servers():
@@ -160,20 +182,19 @@ def servers():
 
     return render_template(
         "servers.html",
-        user=session.get("user"),
-        guilds=session.get("guilds", [])
+        user=session.get("user")
     )
 
 
 # -------------------------
-# STATS API (SAFE)
+# STATS API
 # -------------------------
 @app.route("/api/stats")
 def stats():
     if not is_logged():
         return jsonify({"error": "not logged"}), 401
 
-    guilds = session.get("guilds", [])
+    guilds = get_guilds(session.get("access_token"))
 
     return jsonify({
         "total_servers": len(guilds),
