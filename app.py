@@ -1,10 +1,10 @@
 import os
 import requests
-from flask import Flask, render_template, redirect, url_for, session, request
+from flask import Flask, render_template, redirect, url_for, session, request, jsonify
 
 CLIENT_ID = "1256909611341189193"
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-REDIRECT_URI = "https://dash.quanty-bot.linkpc.net/callback"
+REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "https://dash.quanty-bot.linkpc.net/callback")
 
 OAUTH = (
     "https://discord.com/oauth2/authorize"
@@ -15,88 +15,102 @@ OAUTH = (
 )
 
 TOKEN_URL = "https://discord.com/api/oauth2/token"
-API_USER = "https://discord.com/api/users/@me"
-API_GUILDS = "https://discord.com/api/users/@me/guilds"
+USER_URL = "https://discord.com/api/users/@me"
+GUILDS_URL = "https://discord.com/api/users/@me/guilds"
 
 
 def create_app():
     app = Flask(__name__)
     app.secret_key = os.getenv("SECRET_KEY", "dev")
 
+    # ---------------- HOME ----------------
+    @app.route("/")
+    def home():
+        return redirect(url_for("dashboard")) if "user" in session else redirect(url_for("login"))
+
     # ---------------- LOGIN ----------------
     @app.route("/login")
     def login():
         return redirect(OAUTH)
 
-    # ---------------- CALLBACK ----------------
+    # ---------------- CALLBACK (SAFE MODE) ----------------
     @app.route("/callback")
     def callback():
-        code = request.args.get("code")
-        if not code:
-            return "No code", 400
+        try:
+            code = request.args.get("code")
+            if not code:
+                return "No code", 400
 
-        data = {
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": REDIRECT_URI,
-        }
+            if not CLIENT_SECRET:
+                return "Missing DISCORD_CLIENT_SECRET", 500
 
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            data = {
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": REDIRECT_URI,
+            }
 
-        token = requests.post(TOKEN_URL, data=data, headers=headers).json()
-        access_token = token.get("access_token")
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-        if not access_token:
-            return f"Token error: {token}", 400
+            token_res = requests.post(TOKEN_URL, data=data, headers=headers).json()
+            access_token = token_res.get("access_token")
 
-        auth = {"Authorization": f"Bearer {access_token}"}
+            if not access_token:
+                return jsonify(token_res), 400
 
-        user = requests.get(API_USER, headers=auth).json()
-        guilds = requests.get(API_GUILDS, headers=auth).json()
+            auth = {"Authorization": f"Bearer {access_token}"}
 
-        if not isinstance(guilds, list):
-            guilds = []
+            user = requests.get(USER_URL, headers=auth).json()
+            guilds = requests.get(GUILDS_URL, headers=auth).json()
 
-        # ---------------- AVATAR FIX ----------------
-        avatar = user.get("avatar")
-        user_id = user.get("id")
+            if not isinstance(guilds, list):
+                guilds = []
 
-        if avatar:
-            ext = "gif" if avatar.startswith("a_") else "png"
-            avatar_url = f"https://cdn.discordapp.com/avatars/{user_id}/{avatar}.{ext}"
-        else:
-            avatar_url = "https://cdn.discordapp.com/embed/avatars/0.png"
+            avatar = user.get("avatar")
+            uid = user.get("id")
 
-        # ---------------- SESSION ----------------
-        session["user"] = {
-            "id": user_id,
-            "username": user.get("username"),
-            "avatar": avatar_url
-        }
+            avatar_url = (
+                f"https://cdn.discordapp.com/avatars/{uid}/{avatar}.png"
+                if avatar else "https://cdn.discordapp.com/embed/avatars/0.png"
+            )
 
-        # ---------------- GUILDS ----------------
-        servers = []
-        total_users = 0
+            session["user"] = {
+                "id": uid,
+                "username": user.get("username", "Unknown"),
+                "avatar": avatar_url
+            }
 
-        for g in guilds:
-            servers.append({
-                "id": g.get("id"),
-                "name": g.get("name"),
-                "icon": g.get("icon"),
-                "members": g.get("approximate_member_count", 0)
-            })
+            servers = []
+            total_users = 0
 
-            total_users += int(g.get("approximate_member_count") or 0)
+            for g in guilds:
+                count = g.get("approximate_member_count") or 0
+                try:
+                    count = int(count)
+                except:
+                    count = 0
 
-        session["guilds"] = servers
-        session["stats"] = {
-            "total_servers": len(servers),
-            "total_users": total_users
-        }
+                servers.append({
+                    "id": g.get("id"),
+                    "name": g.get("name"),
+                    "icon": g.get("icon"),
+                    "members": count
+                })
 
-        return redirect(url_for("dashboard"))
+                total_users += count
+
+            session["guilds"] = servers
+            session["stats"] = {
+                "total_servers": len(servers),
+                "total_users": total_users
+            }
+
+            return redirect(url_for("dashboard"))
+
+        except Exception as e:
+            return f"SERVER ERROR: {str(e)}", 500
 
     # ---------------- DASHBOARD ----------------
     @app.route("/dashboard")
@@ -104,21 +118,26 @@ def create_app():
         if "user" not in session:
             return redirect(url_for("login"))
 
-        stats = session.get("stats", {"total_servers": 0, "total_users": 0})
+        stats = session.get("stats") or {}
 
         return render_template(
             "dashboard.html",
             user=session["user"],
             user_guilds=session.get("guilds", []),
-            total_servers=stats["total_servers"],
-            total_users=stats["total_users"]
+            total_servers=stats.get("total_servers", 0),
+            total_users=stats.get("total_users", 0)
         )
 
     # ---------------- API ----------------
     @app.route("/api/stats")
     def api_stats():
-        return session.get("stats", {"total_servers": 0, "total_users": 0})
+        return jsonify(session.get("stats", {"total_servers": 0, "total_users": 0}))
 
+    @app.route("/api/servers")
+    def api_servers():
+        return jsonify(session.get("guilds", []))
+
+    # ---------------- LOGOUT ----------------
     @app.route("/logout")
     def logout():
         session.clear()
