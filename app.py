@@ -1,6 +1,6 @@
 import os
 import requests
-from flask import Flask, render_template, redirect, url_for, session, request
+from flask import Flask, render_template, redirect, session, request
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
@@ -20,18 +20,11 @@ USER_URL = "https://discord.com/api/users/@me"
 GUILDS_URL = "https://discord.com/api/users/@me/guilds"
 
 
-# =====================
-# HELPERS (SAFE)
-# =====================
 def get_user_guilds(token):
     if not token:
         return []
-
     try:
-        r = requests.get(
-            GUILDS_URL,
-            headers={"Authorization": f"Bearer {token}"}
-        )
+        r = requests.get(GUILDS_URL, headers={"Authorization": f"Bearer {token}"})
         return r.json() if r.status_code == 200 else []
     except:
         return []
@@ -40,92 +33,68 @@ def get_user_guilds(token):
 def get_bot_guilds():
     if not BOT_TOKEN:
         return []
-
     try:
-        r = requests.get(
-            GUILDS_URL,
-            headers={"Authorization": f"Bot {BOT_TOKEN}"}
-        )
+        r = requests.get(GUILDS_URL, headers={"Authorization": f"Bot {BOT_TOKEN}"})
         return r.json() if r.status_code == 200 else []
     except:
         return []
 
 
-# =====================
-# APP
-# =====================
 def create_app():
     app = Flask(__name__)
     app.secret_key = os.getenv("SECRET_KEY", "dev-key")
 
-    # =====================
-    # HOME
-    # =====================
     @app.route("/")
     def home():
         if "user" in session:
             return redirect("/dashboard")
         return redirect("/login")
 
-    # =====================
-    # LOGIN
-    # =====================
     @app.route("/login")
     def login():
         return redirect(OAUTH_URL)
 
-    # =====================
-    # CALLBACK
-    # =====================
     @app.route("/callback")
     def callback():
         code = request.args.get("code")
-
         if not code:
             return "Missing code", 400
 
-        try:
-            token_response = requests.post(
-                TOKEN_URL,
-                data={
-                    "client_id": CLIENT_ID,
-                    "client_secret": CLIENT_SECRET,
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "redirect_uri": REDIRECT_URI,
-                },
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-            )
+        token_response = requests.post(
+            TOKEN_URL,
+            data={
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": REDIRECT_URI,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
 
-            token_json = token_response.json()
-            access_token = token_json.get("access_token")
+        token_json = token_response.json()
+        access_token = token_json.get("access_token")
 
-            if not access_token:
-                return f"Token error: {token_json}", 400
+        if not access_token:
+            return f"Token error: {token_json}", 400
 
-            user_response = requests.get(
-                USER_URL,
-                headers={"Authorization": f"Bearer {access_token}"}
-            )
+        user_response = requests.get(
+            USER_URL,
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
 
-            user = user_response.json()
+        user = user_response.json()
 
-            session["user"] = {
-                "id": user.get("id"),
-                "username": user.get("username", "Unknown"),
-                "avatar": user.get("avatar"),
-            }
+        session["user"] = {
+            "id": user.get("id"),
+            "username": user.get("username", "Unknown"),
+            "avatar": user.get("avatar")
+        }
 
-            session["access_token"] = access_token
+        session["access_token"] = access_token
 
-            return redirect("/dashboard")
+        return redirect("/dashboard")
 
-        except Exception as e:
-            return f"Callback error: {e}", 500
-
-    # =====================
-    # DASHBOARD
-    # =====================
     @app.route("/dashboard")
     def dashboard():
         if "user" not in session:
@@ -133,18 +102,17 @@ def create_app():
 
         token = session.get("access_token")
 
-        user_guilds = []
+        user_guilds = get_user_guilds(token)
+
+        # FIX ADMIN SERVERS (SAFE)
         admin_guilds = []
-
-        if token:
-            user_guilds = get_user_guilds(token)
-
-            for g in user_guilds:
-                try:
-                    if int(g.get("permissions", 0)) & 0x8:
-                        admin_guilds.append(g)
-                except:
-                    pass
+        for g in user_guilds:
+            try:
+                perms = int(g.get("permissions") or 0)
+                if perms & 0x8:
+                    admin_guilds.append(g)
+            except:
+                pass
 
         bot_guilds = get_bot_guilds()
 
@@ -157,39 +125,26 @@ def create_app():
             total_users=len(bot_guilds)
         )
 
-    # =====================
-    # SERVERS PAGE
-    # =====================
     @app.route("/servers")
     def servers():
         if "user" not in session:
             return redirect("/login")
 
-        token = session.get("access_token")
-        guilds = get_user_guilds(token)
-
         return render_template(
             "servers.html",
             user=session["user"],
-            user_guilds=guilds,
+            user_guilds=get_user_guilds(session.get("access_token")),
             bot_servers=[]
         )
 
-    # =====================
-    # STATS API
-    # =====================
     @app.route("/api/stats")
     def stats():
         bot_guilds = get_bot_guilds()
-
         return {
             "total_servers": len(bot_guilds),
             "total_users": len(bot_guilds)
         }
 
-    # =====================
-    # LOGOUT
-    # =====================
     @app.route("/logout")
     def logout():
         session.clear()
