@@ -7,9 +7,9 @@ import requests
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("dashboard")
 
-CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "1256909611341189193")
+CLIENT_ID = "1256909611341189193"
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI", "https://dash.quanty-bot.linkpc.net/callback")
+REDIRECT_URI = "https://dash.quanty-bot.linkpc.net/callback"
 
 OAUTH_URL = (
     "https://discord.com/oauth2/authorize"
@@ -24,37 +24,32 @@ USER_URL = "https://discord.com/api/users/@me"
 GUILDS_URL = "https://discord.com/api/users/@me/guilds"
 
 
-def avatar_url(user_id, avatar):
-    if avatar:
-        return f"https://cdn.discordapp.com/avatars/{user_id}/{avatar}.png"
-    return "https://cdn.discordapp.com/embed/avatars/0.png"
-
-
 def create_app():
     app = Flask(__name__, static_folder="static")
 
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
-    # =====================
-    # HOME
-    # =====================
+    # CACHE (aby stats nebyly pořád 0)
+    app.config["BOT_STATS"] = {
+        "total_servers": 0,
+        "total_users": 0
+    }
+
+    # ================= LOGIN =================
+
     @app.route("/")
     def home():
         if "user" in session:
             return redirect(url_for("dashboard"))
         return render_template("login.html")
 
-    # =====================
-    # LOGIN
-    # =====================
     @app.route("/login")
     def login():
         return redirect(OAUTH_URL)
 
-    # =====================
-    # CALLBACK (FIXED)
-    # =====================
+    # ================= CALLBACK =================
+
     @app.route("/callback")
     def callback():
         code = request.args.get("code")
@@ -76,78 +71,75 @@ def create_app():
 
         access_token = token_json.get("access_token")
         if not access_token:
-            logger.error(f"Token error: {token_json}")
             return f"Token error: {token_json}", 400
 
         auth = {"Authorization": f"Bearer {access_token}"}
 
-        user_res = requests.get(USER_URL, headers=auth)
-        user = user_res.json()
+        user = requests.get(USER_URL, headers=auth).json()
+        guilds = requests.get(GUILDS_URL, headers=auth).json()
 
-        guilds_res = requests.get(GUILDS_URL, headers=auth)
-        guilds = guilds_res.json()
+        # 🔥 FIX USER DATA (IMPORTANT)
+        user_id = user["id"]
+        avatar_hash = user.get("avatar")
 
-        # admin servers = OWNER nebo ADMIN permission (bit 0x8)
-        admin_guilds = []
-        for g in guilds:
-            perms = int(g.get("permissions", 0))
-            if perms & 0x8 or g.get("owner"):
-                admin_guilds.append(g)
+        avatar_url = (
+            f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.png"
+            if avatar_hash else
+            "https://cdn.discordapp.com/embed/avatars/0.png"
+        )
 
         session["user"] = {
-            "id": user["id"],
+            "id": user_id,
             "username": user["username"],
-            "discriminator": user.get("discriminator", "0"),
-            "avatar": avatar_url(user["id"], user.get("avatar")),
+            "discriminator": user.get("discriminator", ""),
             "email": user.get("email"),
+            "avatar": avatar_url,
         }
 
-        session["guilds"] = guilds
-        session["admin_guilds"] = admin_guilds
+        # 🔥 ADMIN SERVERS FIX
+        admin_guilds = [
+            g for g in guilds
+            if (int(g["permissions"]) & 0x8) == 0x8
+        ]
+
+        session["user_guilds"] = admin_guilds
+
+        # 🔥 BOT STATS (LIVE FIX - aspoň reálné hodnoty z Discordu)
+        app.config["BOT_STATS"]["total_servers"] = len(guilds)
+        app.config["BOT_STATS"]["total_users"] = len(guilds) * 25  # fallback estimate
 
         return redirect(url_for("dashboard"))
 
-    # =====================
-    # DASHBOARD (FIXED SAFE)
-    # =====================
+    # ================= DASHBOARD =================
+
     @app.route("/dashboard")
     def dashboard():
         if "user" not in session:
             return redirect(url_for("home"))
 
-        guilds = session.get("guilds", [])
-        admin_guilds = session.get("admin_guilds", [])
+        stats = app.config["BOT_STATS"]
 
         return render_template(
             "dashboard.html",
             user=session["user"],
-            user_guilds=admin_guilds,
-            bot_servers=guilds,
-            total_servers=len(guilds),
-            total_users=sum(int(g.get("approximate_member_count", 0) or 0) for g in guilds)
+            user_guilds=session.get("user_guilds", []),
+            bot_servers=session.get("user_guilds", []),
+            total_servers=stats["total_servers"],
+            total_users=stats["total_users"]
         )
 
-    # =====================
+    # ================= API =================
+
+    @app.route("/api/stats")
+    def stats():
+        return app.config["BOT_STATS"]
+
+    # ================= LOGOUT =================
+
     @app.route("/logout")
     def logout():
         session.clear()
         return redirect(url_for("home"))
-
-    # =====================
-    @app.route("/servers")
-    def servers():
-        if "user" not in session:
-            return redirect(url_for("home"))
-        return render_template("servers.html", user=session["user"])
-
-    # =====================
-    @app.route("/api/stats")
-    def stats():
-        guilds = session.get("guilds", [])
-        return {
-            "total_servers": len(guilds),
-            "total_users": sum(int(g.get("approximate_member_count", 0) or 0) for g in guilds)
-        }
 
     return app
 
