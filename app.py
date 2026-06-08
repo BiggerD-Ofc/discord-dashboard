@@ -1,203 +1,67 @@
 import os
-import logging
-from datetime import timedelta
-from flask import Flask, render_template, redirect, url_for, session, request
 import requests
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("dashboard")
+from flask import Flask, render_template, redirect, url_for, session
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
+BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
 
-OAUTH_URL = (
-    "https://discord.com/oauth2/authorize"
-    f"?client_id={CLIENT_ID}"
-    "&response_type=code"
-    f"&redirect_uri={REDIRECT_URI}"
-    "&scope=identify%20email%20guilds"
-)
+API = "https://discord.com/api"
 
-TOKEN_URL = "https://discord.com/api/oauth2/token"
-USER_URL = "https://discord.com/api/users/@me"
-GUILDS_URL = "https://discord.com/api/users/@me/guilds"
+def get_bot_guilds():
+    headers = {"Authorization": f"Bot {BOT_TOKEN}"}
+    r = requests.get(f"{API}/users/@me/guilds", headers=headers)
+    return r.json() if r.status_code == 200 else []
+
+def get_total_users(guilds):
+    total = 0
+    for g in guilds:
+        if "approximate_member_count" in g:
+            total += g["approximate_member_count"]
+        elif "member_count" in g:
+            total += g["member_count"]
+    return total
 
 
 def create_app():
-    app = Flask(__name__, static_folder="static")
+    app = Flask(__name__)
+    app.secret_key = os.getenv("SECRET_KEY", "dev")
 
-    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key")
-    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
-
-    # =====================
-    # HOME
-    # =====================
     @app.route("/")
     def home():
         if "user" in session:
-            return redirect(url_for("dashboard"))
-        return render_template("login.html")
+            return redirect("/dashboard")
+        return redirect("/login")
 
-    # =====================
-    # LOGIN
-    # =====================
-    @app.route("/login")
-    def login():
-        return redirect(OAUTH_URL)
-
-    # =====================
-    # CALLBACK
-    # =====================
-    @app.route("/callback")
-    def callback():
-        code = request.args.get("code")
-
-        if not code:
-            return "Missing code", 400
-
-        token_response = requests.post(
-            TOKEN_URL,
-            data={
-                "client_id": CLIENT_ID,
-                "client_secret": CLIENT_SECRET,
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": REDIRECT_URI,
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
-
-        token_json = token_response.json()
-        access_token = token_json.get("access_token")
-
-        if not access_token:
-            return f"Token error: {token_json}", 400
-
-        user_response = requests.get(
-            USER_URL,
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
-
-        user = user_response.json()
-
-        session["user"] = {
-            "id": user.get("id"),
-            "username": user.get("username", "Unknown"),
-            "avatar": user.get("avatar"),
-        }
-
-        session["access_token"] = access_token
-
-        return redirect(url_for("dashboard"))
-
-    # =====================
-    # DASHBOARD
-    # =====================
     @app.route("/dashboard")
     def dashboard():
         if "user" not in session:
-            return redirect(url_for("home"))
+            return redirect("/login")
 
-        token = session.get("access_token")
-
-        guilds = []
-        admin_guilds = []
-
-        if token:
-            try:
-                res = requests.get(
-                    GUILDS_URL,
-                    headers={"Authorization": f"Bearer {token}"}
-                )
-
-                guilds = res.json()
-                if not isinstance(guilds, list):
-                    guilds = []
-
-                for g in guilds:
-                    perms = int(g.get("permissions", 0))
-                    if perms & 0x8:
-                        admin_guilds.append(g)
-
-            except Exception as e:
-                logger.error(f"Guild fetch error: {e}")
+        guilds = get_bot_guilds()
 
         total_servers = len(guilds)
+        total_users = get_total_users(guilds)
+
+        user = session["user"]
 
         return render_template(
             "dashboard.html",
-            user=session["user"],
+            user=user,
+            user_guilds=[],
+            bot_servers=guilds,
             total_servers=total_servers,
-            total_users=total_servers,
-            user_guilds=admin_guilds,
-            bot_servers=[]
+            total_users=total_users
         )
 
-    # =====================
-    # API STATS (LIVE)
-    # =====================
     @app.route("/api/stats")
     def stats():
-        token = session.get("access_token")
-
-        if not token:
-            return {
-                "total_servers": 0,
-                "total_users": 0,
-                "admin_servers": 0
-            }
-
-        try:
-            res = requests.get(
-                GUILDS_URL,
-                headers={"Authorization": f"Bearer {token}"}
-            )
-
-            guilds = res.json()
-            if not isinstance(guilds, list):
-                guilds = []
-
-            admin = sum(
-                1 for g in guilds if int(g.get("permissions", 0)) & 0x8
-            )
-
-            return {
-                "total_servers": len(guilds),
-                "total_users": len(guilds),
-                "admin_servers": admin
-            }
-
-        except Exception as e:
-            logger.error(e)
-            return {
-                "total_servers": 0,
-                "total_users": 0,
-                "admin_servers": 0
-            }
-
-    # =====================
-    # SERVERS PAGE
-    # =====================
-    @app.route("/servers")
-    def servers():
-        if "user" not in session:
-            return redirect(url_for("home"))
-
-        return render_template(
-            "servers.html",
-            user=session["user"],
-            user_guilds=[],
-            bot_servers=[]
-        )
-
-    # =====================
-    # LOGOUT
-    # =====================
-    @app.route("/logout")
-    def logout():
-        session.clear()
-        return redirect(url_for("home"))
+        guilds = get_bot_guilds()
+        return {
+            "total_servers": len(guilds),
+            "total_users": get_total_users(guilds)
+        }
 
     return app
 
