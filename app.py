@@ -182,7 +182,7 @@ def servers():
 
     token = session.get("access_token")
 
-    guilds = discord_api("/users/@me/guilds", token)
+    guilds = get_guilds(token) or []
 
     # ONLY ADMIN / MANAGE SERVER
     manageable = [
