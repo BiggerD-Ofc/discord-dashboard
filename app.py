@@ -11,24 +11,17 @@ OAUTH = (
     f"?client_id={CLIENT_ID}"
     "&response_type=code"
     f"&redirect_uri={REDIRECT_URI}"
-    "&scope=identify%20email%20guilds%20guilds.members.read"
+    "&scope=identify%20guilds"
 )
 
 TOKEN_URL = "https://discord.com/api/oauth2/token"
-USER_URL = "https://discord.com/api/users/@me"
-GUILDS_URL = "https://discord.com/api/users/@me/guilds"
+API_USER = "https://discord.com/api/users/@me"
+API_GUILDS = "https://discord.com/api/users/@me/guilds"
 
 
 def create_app():
     app = Flask(__name__)
     app.secret_key = os.getenv("SECRET_KEY", "dev")
-
-    # ---------------- HOME ----------------
-    @app.route("/")
-    def home():
-        if "user" in session:
-            return redirect(url_for("dashboard"))
-        return render_template("login.html")
 
     # ---------------- LOGIN ----------------
     @app.route("/login")
@@ -40,7 +33,7 @@ def create_app():
     def callback():
         code = request.args.get("code")
         if not code:
-            return "Missing code", 400
+            return "No code", 400
 
         data = {
             "client_id": CLIENT_ID,
@@ -60,51 +53,47 @@ def create_app():
 
         auth = {"Authorization": f"Bearer {access_token}"}
 
-        user = requests.get(USER_URL, headers=auth).json()
-        guilds = requests.get(GUILDS_URL, headers=auth).json()
+        user = requests.get(API_USER, headers=auth).json()
+        guilds = requests.get(API_GUILDS, headers=auth).json()
 
-        # ---------------- SAFE GUARDS ----------------
         if not isinstance(guilds, list):
             guilds = []
 
-        user_id = user.get("id")
-        avatar = user.get("avatar")
-
         # ---------------- AVATAR FIX ----------------
+        avatar = user.get("avatar")
+        user_id = user.get("id")
+
         if avatar:
             ext = "gif" if avatar.startswith("a_") else "png"
             avatar_url = f"https://cdn.discordapp.com/avatars/{user_id}/{avatar}.{ext}"
         else:
             avatar_url = "https://cdn.discordapp.com/embed/avatars/0.png"
 
+        # ---------------- SESSION ----------------
         session["user"] = {
             "id": user_id,
-            "username": user.get("username", "Unknown"),
+            "username": user.get("username"),
             "avatar": avatar_url
         }
 
-        # ---------------- ADMIN SERVERS FIX ----------------
-        admin_guilds = []
+        # ---------------- GUILDS ----------------
+        servers = []
+        total_users = 0
 
         for g in guilds:
-            perms = int(g.get("permissions", 0))
+            servers.append({
+                "id": g.get("id"),
+                "name": g.get("name"),
+                "icon": g.get("icon"),
+                "members": g.get("approximate_member_count", 0)
+            })
 
-            # 0x8 = ADMINISTRATOR
-            if perms & 0x8:
-                admin_guilds.append({
-                    "id": g.get("id"),
-                    "name": g.get("name"),
-                    "icon": g.get("icon"),
-                    "member_count": g.get("member_count", 0)
-                })
+            total_users += int(g.get("approximate_member_count") or 0)
 
-        session["user_guilds"] = admin_guilds
-        session["bot_servers"] = admin_guilds
-
-        # ---------------- STATS (STABLE FAKE BUT CONSISTENT) ----------------
+        session["guilds"] = servers
         session["stats"] = {
-            "total_servers": len(guilds),
-            "total_users": len(guilds) * 12
+            "total_servers": len(servers),
+            "total_users": total_users
         }
 
         return redirect(url_for("dashboard"))
@@ -113,45 +102,27 @@ def create_app():
     @app.route("/dashboard")
     def dashboard():
         if "user" not in session:
-            return redirect(url_for("home"))
+            return redirect(url_for("login"))
 
         stats = session.get("stats", {"total_servers": 0, "total_users": 0})
 
         return render_template(
             "dashboard.html",
             user=session["user"],
-            user_guilds=session.get("user_guilds", []),
-            bot_servers=session.get("bot_servers", []),
+            user_guilds=session.get("guilds", []),
             total_servers=stats["total_servers"],
             total_users=stats["total_users"]
         )
 
-    # ---------------- SERVERS ----------------
-    @app.route("/servers")
-    def servers():
-        if "user" not in session:
-            return redirect(url_for("home"))
-
-        return render_template(
-            "servers.html",
-            user=session["user"],
-            user_guilds=session.get("user_guilds", [])
-        )
-
     # ---------------- API ----------------
     @app.route("/api/stats")
-    def stats():
+    def api_stats():
         return session.get("stats", {"total_servers": 0, "total_users": 0})
 
-    @app.route("/api/servers")
-    def api_servers():
-        return session.get("user_guilds", [])
-
-    # ---------------- LOGOUT ----------------
     @app.route("/logout")
     def logout():
         session.clear()
-        return redirect(url_for("home"))
+        return redirect(url_for("login"))
 
     return app
 
@@ -159,4 +130,4 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    app.run(debug=True)
