@@ -1,44 +1,62 @@
 import os
 import requests
-from flask import Flask, render_template, redirect, session, request, jsonify
+from flask import Flask, redirect, url_for, session, request, render_template, jsonify
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "dev")
+app.secret_key = os.getenv("SECRET_KEY", "dev-secret-change-me")
 
-CLIENT_ID = "1256909611341189193"
-CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("DISCORD_REDIRECT_URI")
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+REDIRECT_URI = os.getenv("REDIRECT_URI")
 
-TOKEN_URL = "https://discord.com/api/oauth2/token"
-USER_URL = "https://discord.com/api/users/@me"
-GUILDS_URL = "https://discord.com/api/users/@me/guilds"
-
-OAUTH = (
-    "https://discord.com/oauth2/authorize"
-    f"?client_id={CLIENT_ID}"
-    "&response_type=code"
-    f"&redirect_uri={REDIRECT_URI}"
-    "&scope=identify%20guilds"
-)
+DISCORD_API = "https://discord.com/api"
 
 
+# -------------------------
+# HELPERS
+# -------------------------
+def discord_api(endpoint, token):
+    return requests.get(
+        f"{DISCORD_API}{endpoint}",
+        headers={"Authorization": f"Bearer {token}"}
+    ).json()
+
+
+def is_logged():
+    return "access_token" in session
+
+
+# -------------------------
+# HOME
+# -------------------------
 @app.route("/")
 def home():
-    return redirect("/dashboard")
+    return redirect(url_for("dashboard"))
 
 
+# -------------------------
+# LOGIN
+# -------------------------
 @app.route("/login")
 def login():
-    return redirect(OAUTH)
+    return redirect(
+        "https://discord.com/oauth2/authorize"
+        f"?client_id={CLIENT_ID}"
+        "&response_type=code"
+        f"&redirect_uri={REDIRECT_URI}"
+        "&scope=identify%20email%20guilds"
+    )
 
 
+# -------------------------
+# CALLBACK
+# -------------------------
 @app.route("/callback")
 def callback():
     code = request.args.get("code")
-    if not code:
-        return "Missing code", 400
 
-    session.clear()
+    if not code:
+        return "No code provided", 400
 
     data = {
         "client_id": CLIENT_ID,
@@ -46,81 +64,125 @@ def callback():
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": REDIRECT_URI,
+        "scope": "identify email guilds"
     }
 
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-    token = requests.post(TOKEN_URL, data=data, headers=headers).json()
-
-    if "access_token" not in token:
-        return f"OAuth error: {token}", 500
-
-    auth = {"Authorization": f"Bearer {token['access_token']}"}
-
-    user = requests.get(USER_URL, headers=auth).json()
-    guilds = requests.get(GUILDS_URL, headers=auth).json()
-
-    if not isinstance(guilds, list):
-        guilds = []
-
-    avatar_url = (
-        f"https://cdn.discordapp.com/avatars/{user.get('id')}/{user.get('avatar')}.png"
-        if user.get("avatar")
-        else "https://cdn.discordapp.com/embed/avatars/0.png"
+    r = requests.post(
+        f"{DISCORD_API}/oauth2/token",
+        data=data,
+        headers=headers
     )
 
+    if r.status_code != 200:
+        return f"OAuth failed: {r.text}", 400
+
+    token_data = r.json()
+    access_token = token_data["access_token"]
+
+    session["access_token"] = access_token
+
+    # USER INFO
+    user = discord_api("/users/@me", access_token)
+
+    # GUILDS (CUT DOWN = FIX COOKIE SIZE)
+    guilds_raw = discord_api("/users/@me/guilds", access_token)
+
+    guilds = []
+    for g in guilds_raw:
+        guilds.append({
+            "id": g["id"],
+            "name": g["name"],
+            "icon": g.get("icon"),
+            "permissions": g.get("permissions", "0")
+        })
+
     session["user"] = {
-        "id": user.get("id"),
-        "username": user.get("username", "Unknown"),
-        "avatar": avatar_url
+        "id": user["id"],
+        "username": user["username"],
+        "avatar": (
+            f"https://cdn.discordapp.com/avatars/{user['id']}/{user['avatar']}.png"
+            if user.get("avatar") else None
+        )
     }
 
     session["guilds"] = guilds
 
-    return redirect("/dashboard")
+    return redirect(url_for("dashboard"))
 
 
+# -------------------------
+# LOGOUT
+# -------------------------
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+# -------------------------
+# DASHBOARD
+# -------------------------
 @app.route("/dashboard")
 def dashboard():
-    if "user" not in session:
-        return redirect("/login")
+    if not is_logged():
+        return redirect(url_for("login"))
 
+    user = session.get("user")
     guilds = session.get("guilds", [])
 
-    # SAFE CALC
-    total_servers = len(guilds) if isinstance(guilds, list) else 0
-    total_users = 0
+    # ADMIN FILTER (0x8 = ADMIN)
+    user_guilds = [
+        g for g in guilds
+        if int(g.get("permissions", 0)) & 0x8
+    ]
 
-    for g in guilds:
-        try:
-            total_users += g.get("approximate_member_count", 0)
-        except:
-            pass
+    bot_servers = guilds
 
     return render_template(
         "dashboard.html",
-        user=session.get("user", {}),
-        total_servers=total_servers,
-        total_users=total_users,
-        user_guilds=[]
+        user=user,
+        user_guilds=user_guilds,
+        bot_servers=bot_servers,
+        total_servers=len(guilds),
+        total_users=0
     )
 
 
+# -------------------------
+# SERVERS PAGE (FIX FOR BUILDERROR)
+# -------------------------
+@app.route("/servers")
+def servers():
+    if not is_logged():
+        return redirect(url_for("login"))
+
+    return render_template(
+        "servers.html",
+        user=session.get("user"),
+        guilds=session.get("guilds", [])
+    )
+
+
+# -------------------------
+# STATS API (SAFE)
+# -------------------------
 @app.route("/api/stats")
 def stats():
+    if not is_logged():
+        return jsonify({"error": "not logged"}), 401
+
     guilds = session.get("guilds", [])
 
     return jsonify({
-        "total_servers": len(guilds) if isinstance(guilds, list) else 0,
+        "total_servers": len(guilds),
         "total_users": 0
     })
 
 
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect("/login")
-
-
+# -------------------------
+# RUN
+# -------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True)
